@@ -30,7 +30,7 @@ const provider = new GoogleAuthProvider();
 
 
 // 🔐 UID ADMIN (TU CUENTA)
-const ADMIN_UID = "TU_UID_AQUI";
+const ADMIN_UID = "ofe3AaZtvwd7KxY8MqG4182BZpo2";
 
 
 // 🔐 LOGIN AUTOMÁTICO
