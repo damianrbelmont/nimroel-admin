@@ -129,7 +129,7 @@ body {
    BOTÓN
    ========================================= */
 
-#uploadBtn {
+.action-btn {
     width: 100%;
     padding: 12px;
     margin-top: 10px;
@@ -143,6 +143,28 @@ body {
     cursor: pointer;
 
     transition: all 0.25s ease;
+}
+
+.action-btn-secondary {
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+}
+
+.action-btn-secondary:hover {
+    background: var(--accent);
+    color: #050b14;
+}
+
+.action-btn-danger {
+    background: #3a1111;
+    color: #ffc7c7;
+    border: 1px solid #7a2424;
+}
+
+.action-btn-danger:hover {
+    background: #7a2424;
+    color: #ffffff;
 }
 
 #loginBtn {
@@ -170,7 +192,7 @@ body {
 }
 
 /* ACTIVE */
-#uploadBtn:active {
+.action-btn:active {
     transform: scale(0.98);
 }
 

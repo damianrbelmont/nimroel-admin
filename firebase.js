@@ -8,7 +8,9 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 import {
     getFirestore,
+    deleteDoc,
     doc,
+    getDoc,
     setDoc
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
@@ -35,6 +37,9 @@ const fileInput = document.getElementById("jsonFile");
 const jsonIdInput = document.getElementById("jsonId");
 const jsonTypeInput = document.getElementById("jsonType");
 const uploadBtn = document.getElementById("uploadBtn");
+const mergeBtn = document.getElementById("mergeBtn");
+const loadBtn = document.getElementById("loadBtn");
+const deleteBtn = document.getElementById("deleteBtn");
 const jsonInfo = document.getElementById("jsonInfo");
 const loginBtn = document.getElementById("loginBtn");
 const authStatus = document.getElementById("authStatus");
@@ -54,7 +59,10 @@ function setAdminEnabled(enabled) {
     fileInput.disabled = !enabled;
     jsonIdInput.disabled = !enabled;
     jsonTypeInput.disabled = !enabled;
+    loadBtn.disabled = !enabled;
+    mergeBtn.disabled = !enabled;
     uploadBtn.disabled = !enabled;
+    deleteBtn.disabled = !enabled;
 }
 
 function setAuthButtonMode(mode) {
@@ -75,7 +83,7 @@ function createInfoLine(label, value) {
 function renderJsonInfo(data) {
     jsonInfo.textContent = "";
     jsonInfo.appendChild(createInfoLine("Nombre", data.name));
-    jsonInfo.appendChild(createInfoLine("ID", data.id));
+    jsonInfo.appendChild(createInfoLine("ID", data.id || jsonIdInput.value));
     jsonInfo.appendChild(createInfoLine("Tipo", data.type));
 }
 
@@ -83,6 +91,45 @@ function isCurrentUserAuthorized(user) {
     if (!user) return false;
     const normalizedEmail = (user.email || "").toLowerCase();
     return user.uid === ADMIN_UID && normalizedEmail === ADMIN_EMAIL;
+}
+
+function ensureAuthorized() {
+    const ok = isAuthorized && isCurrentUserAuthorized(auth.currentUser);
+    if (ok) return true;
+    alert("Debes iniciar sesion con la cuenta autorizada.");
+    setAdminEnabled(false);
+    return false;
+}
+
+function getValidatedId() {
+    const id = jsonIdInput.value.trim();
+    if (!id) {
+        alert("Debes indicar un ID.");
+        return null;
+    }
+    if (id.includes("/")) {
+        alert("El ID no puede contener '/'.");
+        return null;
+    }
+    return id;
+}
+
+function buildPayload() {
+    if (!jsonData) {
+        alert("Carga primero un JSON local o desde Firebase.");
+        return null;
+    }
+
+    const id = getValidatedId();
+    if (!id) return null;
+
+    const type = jsonTypeInput.value.trim();
+    if (!type) {
+        alert("Debes indicar el tipo.");
+        return null;
+    }
+
+    return { ...jsonData, id, type };
 }
 
 async function startGoogleLogin() {
@@ -169,42 +216,76 @@ fileInput.addEventListener("change", (event) => {
     reader.readAsText(file);
 });
 
-uploadBtn.addEventListener("click", async () => {
-    if (!isAuthorized || !isCurrentUserAuthorized(auth.currentUser)) {
-        alert("Debes iniciar sesion con la cuenta autorizada.");
-        setAdminEnabled(false);
-        return;
-    }
-
-    if (!jsonData) {
-        alert("Carga un JSON primero");
-        return;
-    }
-
-    const id = jsonIdInput.value.trim();
-    const type = jsonTypeInput.value.trim();
-
-    if (!id || !type) {
-        alert("ID y tipo son obligatorios");
-        return;
-    }
-
-    if (id.includes("/")) {
-        alert("El ID no puede contener '/'");
-        return;
-    }
+loadBtn.addEventListener("click", async () => {
+    if (!ensureAuthorized()) return;
+    const id = getValidatedId();
+    if (!id) return;
 
     try {
-        await setDoc(doc(db, "items", id), {
-            ...jsonData,
-            id,
-            type
-        });
+        const itemRef = doc(db, "items", id);
+        const snapshot = await getDoc(itemRef);
 
-        alert("Subido correctamente");
+        if (!snapshot.exists()) {
+            alert("No existe un documento con ese ID.");
+            return;
+        }
+
+        jsonData = snapshot.data();
+        jsonIdInput.value = id;
+        jsonTypeInput.value = (jsonData.type || "").toString();
+        renderJsonInfo(jsonData);
+        alert("Documento cargado desde Firebase.");
     } catch (error) {
-        console.error("Upload error:", error);
-        alert("Error al subir");
+        console.error("Load error:", error);
+        alert("Error al cargar el documento.");
+    }
+});
+
+mergeBtn.addEventListener("click", async () => {
+    if (!ensureAuthorized()) return;
+    const payload = buildPayload();
+    if (!payload) return;
+
+    try {
+        await setDoc(doc(db, "items", payload.id), payload, { merge: true });
+        alert("Actualizado con merge (sin borrar campos no enviados).");
+    } catch (error) {
+        console.error("Merge error:", error);
+        alert("Error al actualizar.");
+    }
+});
+
+uploadBtn.addEventListener("click", async () => {
+    if (!ensureAuthorized()) return;
+    const payload = buildPayload();
+    if (!payload) return;
+
+    try {
+        await setDoc(doc(db, "items", payload.id), payload);
+        alert("Documento sobrescrito completamente.");
+    } catch (error) {
+        console.error("Replace error:", error);
+        alert("Error al sobrescribir.");
+    }
+});
+
+deleteBtn.addEventListener("click", async () => {
+    if (!ensureAuthorized()) return;
+    const id = getValidatedId();
+    if (!id) return;
+
+    const confirmed = confirm(`Vas a eliminar items/${id} de forma permanente. Continuar?`);
+    if (!confirmed) return;
+
+    try {
+        await deleteDoc(doc(db, "items", id));
+        jsonData = null;
+        jsonInfo.textContent = "";
+        alert("Documento eliminado.");
+    } catch (error) {
+        console.error("Delete error:", error);
+        alert("Error al eliminar.");
+        return;
     }
 });
 

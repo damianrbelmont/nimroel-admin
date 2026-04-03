@@ -27,7 +27,10 @@
             <input type="text" id="jsonId" placeholder="ID">
             <input type="text" id="jsonType" placeholder="Tipo (character, location...)">
 
-            <button id="uploadBtn" type="button" disabled>SUBIR A FIREBASE</button>
+            <button id="loadBtn" class="action-btn action-btn-secondary" type="button" disabled>CARGAR DESDE FIREBASE</button>
+            <button id="mergeBtn" class="action-btn action-btn-secondary" type="button" disabled>ACTUALIZAR (SIN BORRAR CAMPOS)</button>
+            <button id="uploadBtn" class="action-btn" type="button" disabled>SOBRESCRIBIR COMPLETO</button>
+            <button id="deleteBtn" class="action-btn action-btn-danger" type="button" disabled>ELIMINAR DOCUMENTO</button>
 
             <div class="admin-info" id="jsonInfo"></div>
 
