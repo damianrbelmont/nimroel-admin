@@ -57,6 +57,12 @@ function setAdminEnabled(enabled) {
     uploadBtn.disabled = !enabled;
 }
 
+function setAuthButtonMode(mode) {
+    loginBtn.dataset.mode = mode;
+    loginBtn.textContent = mode === "logout" ? "CERRAR SESION" : "INICIAR SESION CON GOOGLE";
+    loginBtn.disabled = false;
+}
+
 function createInfoLine(label, value) {
     const line = document.createElement("p");
     const strong = document.createElement("strong");
@@ -95,13 +101,33 @@ async function startGoogleLogin() {
     }
 }
 
-loginBtn.addEventListener("click", startGoogleLogin);
+async function closeSession() {
+    setStatus("Cerrando sesion...");
+    loginBtn.disabled = true;
+    try {
+        await signOut(auth);
+    } catch (error) {
+        console.error("Logout error:", error);
+        setStatus("No se pudo cerrar sesion.", true);
+    } finally {
+        loginBtn.disabled = false;
+    }
+}
+
+loginBtn.addEventListener("click", async () => {
+    if (loginBtn.dataset.mode === "logout") {
+        await closeSession();
+        return;
+    }
+    await startGoogleLogin();
+});
 
 onAuthStateChanged(auth, async (user) => {
     if (!user) {
         isAuthorized = false;
         setAdminEnabled(false);
         setStatus("Debes iniciar sesion para continuar.");
+        setAuthButtonMode("login");
         return;
     }
 
@@ -109,6 +135,7 @@ onAuthStateChanged(auth, async (user) => {
         isAuthorized = false;
         setAdminEnabled(false);
         setStatus("Cuenta no autorizada. Solo la cuenta admin puede entrar.", true);
+        setAuthButtonMode("login");
         await signOut(auth).catch(() => {});
         return;
     }
@@ -116,6 +143,7 @@ onAuthStateChanged(auth, async (user) => {
     isAuthorized = true;
     setAdminEnabled(true);
     setStatus(`Autenticado como ${user.email}`);
+    setAuthButtonMode("logout");
 });
 
 fileInput.addEventListener("change", (event) => {
@@ -182,6 +210,7 @@ uploadBtn.addEventListener("click", async () => {
 
 setAdminEnabled(false);
 setStatus("Verificando sesion...");
+setAuthButtonMode("login");
 
 // Force fresh login every page load.
 signOut(auth).catch(() => {
