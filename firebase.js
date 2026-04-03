@@ -3,7 +3,8 @@ import {
     getAuth,
     GoogleAuthProvider,
     signInWithPopup,
-    onAuthStateChanged
+    onAuthStateChanged,
+    signOut
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
 import {
@@ -12,16 +13,14 @@ import {
     setDoc
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-
-// 🔥 CONFIG (AQUÍ VAS A PONER LA TUYA REAL)
 const firebaseConfig = {
     apiKey: "AIzaSyAALd99tyT-ILov22m1G58iforA3f-E628",
     authDomain: "nimroel-wiki.firebaseapp.com",
     projectId: "nimroel-wiki"
 };
 
+const ADMIN_UID = "ofe3AaZtvwd7KxY8MqG4182BZpo2";
 
-// 🔥 INIT
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
@@ -29,19 +28,15 @@ const db = getFirestore(app);
 const provider = new GoogleAuthProvider();
 
 
-// 🔐 UID ADMIN (TU CUENTA)
-const ADMIN_UID = "ofe3AaZtvwd7KxY8MqG4182BZpo2";
+// 🔥 FORZAR LOGIN (BORRA SESIÓN SI EXISTE)
+async function forceLogin() {
+    if (auth.currentUser) {
+        await signOut(auth);
+    }
 
-
-// 🔐 LOGIN AUTOMÁTICO
-function login() {
     signInWithPopup(auth, provider)
-        .then(result => {
-            console.log("🟢 Logeado:", result.user.uid);
-        })
-        .catch(err => {
-            console.error("❌ Error login:", err);
-        });
+        .then(res => console.log("🟢 Logeado:", res.user.uid))
+        .catch(err => console.error(err));
 }
 
 
@@ -49,13 +44,12 @@ function login() {
 onAuthStateChanged(auth, (user) => {
 
     if (!user) {
-        console.log("🔐 No logeado → lanzando login");
-        login();
+        console.log("🔐 Lanzando login");
+        forceLogin();
         return;
     }
 
     if (user.uid !== ADMIN_UID) {
-        alert("No autorizado");
         document.body.innerHTML = "<h1>Acceso denegado</h1>";
         return;
     }
@@ -64,7 +58,7 @@ onAuthStateChanged(auth, (user) => {
 });
 
 
-// 📂 CARGA JSON
+// 📂 RESTO IGUAL (NO TOCAR)
 const fileInput = document.getElementById("jsonFile");
 const jsonIdInput = document.getElementById("jsonId");
 const jsonTypeInput = document.getElementById("jsonType");
@@ -84,7 +78,6 @@ fileInput.addEventListener("change", (e) => {
         try {
             jsonData = JSON.parse(event.target.result);
 
-            // 🔥 AUTO DETECTAR ID Y TYPE
             jsonIdInput.value = jsonData.id || "";
             jsonTypeInput.value = jsonData.type || "";
 
@@ -103,7 +96,6 @@ fileInput.addEventListener("change", (e) => {
 });
 
 
-// 🚀 SUBIR A FIREBASE
 uploadBtn.addEventListener("click", async () => {
 
     if (!jsonData) {
