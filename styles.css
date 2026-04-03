@@ -70,6 +70,21 @@ body {
         0 20px 60px rgba(0,0,0,0.6);
 }
 
+.admin-section + .admin-section {
+    margin-top: 24px;
+    padding-top: 20px;
+    border-top: 1px solid rgba(184,155,94,0.2);
+}
+
+.section-title {
+    font-family: var(--font-serif);
+    font-size: 1rem;
+    letter-spacing: 1px;
+    color: var(--accent);
+    margin-bottom: 12px;
+    text-transform: uppercase;
+}
+
 .auth-box {
     width: 420px;
     max-width: 100%;
@@ -165,6 +180,35 @@ body {
 .action-btn-danger:hover {
     background: #7a2424;
     color: #ffffff;
+}
+
+.search-results {
+    margin-top: 10px;
+    margin-bottom: 12px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.result-chip {
+    border: 1px solid rgba(184,155,94,0.35);
+    color: var(--text-main);
+    background: #0c1824;
+    padding: 6px 10px;
+    font-size: 0.78rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.result-chip:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.result-chip.is-selected {
+    border-color: var(--accent);
+    background: rgba(184,155,94,0.18);
+    color: var(--accent);
 }
 
 #loginBtn {
