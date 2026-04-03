@@ -15,14 +15,19 @@
 
         <h1 class="admin-title">NIMROEL ADMIN</h1>
 
-        <div class="admin-box">
+        <div class="auth-box">
+            <p id="authStatus" class="auth-status">Debes iniciar sesion para continuar.</p>
+            <button id="loginBtn" type="button">INICIAR SESION CON GOOGLE</button>
+        </div>
+
+        <div class="admin-box is-disabled" id="adminBox" aria-disabled="true">
 
             <input type="file" id="jsonFile" accept=".json">
 
             <input type="text" id="jsonId" placeholder="ID">
             <input type="text" id="jsonType" placeholder="Tipo (character, location...)">
 
-            <button id="uploadBtn">SUBIR A FIREBASE</button>
+            <button id="uploadBtn" type="button" disabled>SUBIR A FIREBASE</button>
 
             <div class="admin-info" id="jsonInfo"></div>
 
