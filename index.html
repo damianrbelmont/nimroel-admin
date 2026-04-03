@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Nimroel Admin</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <link rel="stylesheet" href="styles.css">
+
+  <style>
+    body {
+      padding: 100px 20px;
+      max-width: 900px;
+      margin: auto;
+    }
+
+    h1 {
+      font-family: var(--font-serif);
+      color: var(--accent);
+      margin-bottom: 30px;
+      text-align: center;
+    }
+
+    .admin-box {
+      background: var(--bg-alt);
+      padding: 30px;
+      border: 1px solid rgba(184,155,94,0.2);
+    }
+
+    input {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 15px;
+      background: #050b14;
+      color: white;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+
+    button {
+      width: 100%;
+      padding: 12px;
+      background: var(--accent);
+      border: none;
+      color: #050b14;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: transparent;
+      color: var(--accent);
+      border: 1px solid var(--accent);
+    }
+
+    .status {
+      margin-top: 15px;
+      text-align: center;
+      color: var(--accent);
+    }
+
+    .preview {
+      margin-top: 20px;
+      font-size: 0.9rem;
+      color: var(--text-muted);
+    }
+  </style>
+</head>
+
+<body>
+
+  <h1>NIMROEL ADMIN</h1>
+
+  <div class="admin-box">
+
+    <input type="file" id="fileInput" accept=".json">
+
+    <input type="text" id="docId" placeholder="ID detectado" readonly>
+    <input type="text" id="tipo" placeholder="Tipo detectado" readonly>
+
+    <button id="uploadBtn">SUBIR A FIREBASE</button>
+
+    <div class="status" id="status"></div>
+
+    <div class="preview" id="preview"></div>
+
+  </div>
+
+  <script type="module">
+
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import {
+      getAuth,
+      GoogleAuthProvider,
+      signInWithPopup,
+      onAuthStateChanged
+    } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+
+    import {
+      getFirestore
+    } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+    // 🔥 CONFIG FIREBASE
+    const firebaseConfig = {
+      apiKey: "AIzaSyAALd99tyT-ILov22m1G58iforA3f-E628",
+      authDomain: "nimroel-wiki.firebaseapp.com",
+      projectId: "nimroel-wiki"
+    };
+
+    // 🔥 INIT
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    const provider = new GoogleAuthProvider();
+
+    console.log("🔥 Firebase conectado");
+
+    // 🔐 LOGIN AUTOMÁTICO (temporal para test)
+    signInWithPopup(auth, provider);
+
+    // 👁️ DETECTAR SESIÓN
+    onAuthStateChanged(auth, (user) => {
+      if (user) {
+        console.log("🟢 Logeado:", user.uid);
+      } else {
+        console.log("🔴 No logeado");
+      }
+    });
+
+    // =========================
+    // 📁 LECTURA JSON
+    // =========================
+
+    let jsonData = null;
+
+    const fileInput = document.getElementById("fileInput");
+    const docId = document.getElementById("docId");
+    const tipo = document.getElementById("tipo");
+    const preview = document.getElementById("preview");
+
+    fileInput.addEventListener("change", async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+
+        jsonData = data;
+
+        docId.value = data.id || "SIN ID";
+        tipo.value = data.type || "SIN TYPE";
+
+        preview.innerHTML = `
+          <strong>Nombre:</strong> ${data.name || "?"}<br>
+          <strong>ID:</strong> ${data.id || "?"}<br>
+          <strong>Tipo:</strong> ${data.type || "?"}
+        `;
+
+      } catch (err) {
+        alert("JSON inválido");
+        jsonData = null;
+      }
+    });
+
+  </script>
+
+</body>
+</html>
