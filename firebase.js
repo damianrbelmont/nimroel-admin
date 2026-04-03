@@ -11,15 +11,14 @@ import {
     deleteDoc,
     doc,
     documentId,
-    endAt,
     getDoc,
     getDocs,
     getFirestore,
     limit,
     orderBy,
     query,
+    runTransaction,
     setDoc,
-    startAt
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -38,6 +37,7 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 const itemsCollection = collection(db, "items");
+const indexDocRef = doc(db, "meta", "index");
 
 const provider = new GoogleAuthProvider();
 provider.setCustomParameters({ prompt: "select_account" });
@@ -54,6 +54,7 @@ const newJsonInfo = document.getElementById("newJsonInfo");
 
 const searchIdInput = document.getElementById("searchIdInput");
 const searchBtn = document.getElementById("searchBtn");
+const rebuildIndexBtn = document.getElementById("rebuildIndexBtn");
 const searchResults = document.getElementById("searchResults");
 const selectedIdInput = document.getElementById("selectedIdInput");
 const loadSelectedBtn = document.getElementById("loadSelectedBtn");
@@ -136,6 +137,106 @@ function validateId(id) {
     return trimmed;
 }
 
+function normalizeTypeToIndexKey(type) {
+    const raw = (type || "").toString().trim().toLowerCase();
+    if (!raw) return null;
+
+    const aliases = {
+        character: "characters",
+        characters: "characters",
+        location: "locations",
+        locations: "locations",
+        organization: "organizations",
+        organizations: "organizations"
+    };
+
+    if (aliases[raw]) return aliases[raw];
+    if (raw.endsWith("y")) return `${raw.slice(0, -1)}ies`;
+    return raw.endsWith("s") ? raw : `${raw}s`;
+}
+
+function normalizeIndexData(data) {
+    const normalized = {};
+
+    if (data && typeof data === "object") {
+        Object.entries(data).forEach(([key, value]) => {
+            if (!Array.isArray(value)) return;
+            const clean = value
+                .map((entry) => (entry || "").toString().trim())
+                .filter(Boolean);
+            normalized[key] = [...new Set(clean)];
+        });
+    }
+
+    if (!normalized.characters) normalized.characters = [];
+    if (!normalized.locations) normalized.locations = [];
+    if (!normalized.organizations) normalized.organizations = [];
+    return normalized;
+}
+
+function removeIdFromAllIndexArrays(indexData, id) {
+    Object.keys(indexData).forEach((key) => {
+        if (!Array.isArray(indexData[key])) return;
+        indexData[key] = indexData[key].filter((entry) => entry !== id);
+    });
+}
+
+function sortIndexArrays(indexData) {
+    Object.keys(indexData).forEach((key) => {
+        if (!Array.isArray(indexData[key])) return;
+        indexData[key] = [...new Set(indexData[key])].sort((a, b) => a.localeCompare(b));
+    });
+}
+
+async function updateIndexForUpsert(id, type) {
+    const indexKey = normalizeTypeToIndexKey(type);
+    if (!indexKey) throw new Error("No se pudo normalizar el type para el indice.");
+
+    await runTransaction(db, async (transaction) => {
+        const indexSnap = await transaction.get(indexDocRef);
+        const indexData = normalizeIndexData(indexSnap.exists() ? indexSnap.data() : {});
+
+        removeIdFromAllIndexArrays(indexData, id);
+
+        if (!Array.isArray(indexData[indexKey])) {
+            indexData[indexKey] = [];
+        }
+        indexData[indexKey].push(id);
+        sortIndexArrays(indexData);
+
+        transaction.set(indexDocRef, indexData);
+    });
+}
+
+async function updateIndexForDelete(id) {
+    await runTransaction(db, async (transaction) => {
+        const indexSnap = await transaction.get(indexDocRef);
+        if (!indexSnap.exists()) return;
+
+        const indexData = normalizeIndexData(indexSnap.data());
+        removeIdFromAllIndexArrays(indexData, id);
+        sortIndexArrays(indexData);
+        transaction.set(indexDocRef, indexData);
+    });
+}
+
+async function rebuildIndexFromItems() {
+    const snapshot = await getDocs(query(itemsCollection, orderBy(documentId()), limit(1000)));
+    const rebuilt = normalizeIndexData({});
+
+    snapshot.docs.forEach((itemDoc) => {
+        const itemData = itemDoc.data();
+        const indexKey = normalizeTypeToIndexKey(itemData.type);
+        if (!indexKey) return;
+        if (!Array.isArray(rebuilt[indexKey])) rebuilt[indexKey] = [];
+        rebuilt[indexKey].push(itemDoc.id);
+    });
+
+    sortIndexArrays(rebuilt);
+    await setDoc(indexDocRef, rebuilt);
+    return snapshot.size;
+}
+
 function readJsonFile(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -182,24 +283,16 @@ function renderSearchResults(ids) {
     });
 }
 
-async function fetchIdsByPrefix(prefix) {
-    const term = (prefix || "").trim();
-    let q;
+async function fetchIdsBySearch(searchValue) {
+    const term = (searchValue || "").toString().trim().toLowerCase();
+    const baseQuery = query(itemsCollection, orderBy(documentId()), limit(300));
+    const snapshot = await getDocs(baseQuery);
+    const allIds = snapshot.docs.map((item) => item.id);
 
-    if (!term) {
-        q = query(itemsCollection, orderBy(documentId()), limit(25));
-    } else {
-        q = query(
-            itemsCollection,
-            orderBy(documentId()),
-            startAt(term),
-            endAt(`${term}\uf8ff`),
-            limit(25)
-        );
-    }
-
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map((item) => item.id);
+    if (!term) return allIds.slice(0, 25);
+    return allIds
+        .filter((id) => id.toLowerCase().includes(term))
+        .slice(0, 50);
 }
 
 function buildNewPayload() {
@@ -300,7 +393,7 @@ onAuthStateChanged(auth, async (user) => {
     setAuthButtonMode("logout");
 
     try {
-        const initialIds = await fetchIdsByPrefix("");
+        const initialIds = await fetchIdsBySearch("");
         renderSearchResults(initialIds);
     } catch (error) {
         console.error("Initial list error:", error);
@@ -339,8 +432,9 @@ createBtn.addEventListener("click", async () => {
         }
 
         await setDoc(itemRef, payload);
-        alert("JSON nuevo subido correctamente.");
-        const updatedIds = await fetchIdsByPrefix(searchIdInput.value);
+        await updateIndexForUpsert(payload.id, payload.type);
+        alert("JSON nuevo subido correctamente. Indice actualizado.");
+        const updatedIds = await fetchIdsBySearch(searchIdInput.value);
         renderSearchResults(updatedIds);
     } catch (error) {
         console.error("Create error:", error);
@@ -352,11 +446,26 @@ searchBtn.addEventListener("click", async () => {
     if (!ensureAuthorized()) return;
 
     try {
-        const ids = await fetchIdsByPrefix(searchIdInput.value);
+        const ids = await fetchIdsBySearch(searchIdInput.value);
         renderSearchResults(ids);
     } catch (error) {
         console.error("Search error:", error);
         alert("Error al buscar IDs.");
+    }
+});
+
+rebuildIndexBtn.addEventListener("click", async () => {
+    if (!ensureAuthorized()) return;
+
+    const confirmed = confirm("Se reconstruira meta/index usando todos los documentos de items. Continuar?");
+    if (!confirmed) return;
+
+    try {
+        const total = await rebuildIndexFromItems();
+        alert(`Indice reconstruido correctamente desde ${total} documento(s).`);
+    } catch (error) {
+        console.error("Rebuild index error:", error);
+        alert("Error al reconstruir el indice.");
     }
 });
 
@@ -408,7 +517,8 @@ mergeBtn.addEventListener("click", async () => {
 
     try {
         await setDoc(doc(db, "items", payload.id), payload, { merge: true });
-        alert("JSON actualizado con anadir (merge).");
+        await updateIndexForUpsert(payload.id, payload.type);
+        alert("JSON actualizado con anadir (merge). Indice actualizado.");
     } catch (error) {
         console.error("Merge error:", error);
         alert("Error al anadir informacion.");
@@ -422,7 +532,8 @@ overwriteBtn.addEventListener("click", async () => {
 
     try {
         await setDoc(doc(db, "items", payload.id), payload);
-        alert("JSON sobrescrito completamente.");
+        await updateIndexForUpsert(payload.id, payload.type);
+        alert("JSON sobrescrito completamente. Indice actualizado.");
     } catch (error) {
         console.error("Overwrite error:", error);
         alert("Error al sobrescribir JSON.");
@@ -440,12 +551,13 @@ deleteBtn.addEventListener("click", async () => {
 
     try {
         await deleteDoc(doc(db, "items", id));
+        await updateIndexForDelete(id);
         editJsonData = null;
         editJsonInfo.textContent = "";
         selectedEditId = "";
         selectedIdInput.value = "";
-        alert("Documento eliminado.");
-        const updatedIds = await fetchIdsByPrefix(searchIdInput.value);
+        alert("Documento eliminado. Indice actualizado.");
+        const updatedIds = await fetchIdsBySearch(searchIdInput.value);
         renderSearchResults(updatedIds);
     } catch (error) {
         console.error("Delete error:", error);
