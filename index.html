@@ -10,9 +10,7 @@
 </head>
 
 <body>
-
     <main class="admin-container">
-
         <h1 class="admin-title">NIMROEL ADMIN</h1>
 
         <div class="auth-box">
@@ -22,43 +20,104 @@
 
         <div class="admin-box is-disabled" id="adminBox" aria-disabled="true">
             <section class="admin-section">
-                <h2 class="section-title">Subir JSON Nuevo</h2>
-
-                <input type="file" id="newJsonFile" accept=".json">
-                <input type="text" id="newJsonId" placeholder="ID">
-                <input type="text" id="newJsonType" placeholder="Tipo (character, location...)">
-                <button id="createBtn" class="action-btn" type="button" disabled>SUBIR JSON NUEVO A FIREBASE</button>
-
-                <div class="admin-info" id="newJsonInfo"></div>
-            </section>
-
-            <section class="admin-section">
-                <h2 class="section-title">Editar JSON de Firebase</h2>
+                <h2 class="section-title">Busqueda y Carga</h2>
 
                 <input type="text" id="searchIdInput" placeholder="Buscar ID (parcial o completo)">
                 <button id="searchBtn" class="action-btn action-btn-secondary" type="button" disabled>BUSCAR IDS</button>
-                <button id="rebuildIndexBtn" class="action-btn action-btn-secondary" type="button" disabled>RECONSTRUIR INDICE DESDE ITEMS</button>
                 <div class="search-results" id="searchResults"></div>
 
-                <input type="text" id="selectedIdInput" placeholder="ID seleccionado" readonly>
-                <button id="loadSelectedBtn" class="action-btn action-btn-secondary" type="button" disabled>CARGAR JSON SELECCIONADO</button>
+                <input type="text" id="selectedIdInput" placeholder="ID para cargar desde Firebase">
+                <button id="loadSelectedBtn" class="action-btn action-btn-secondary" type="button" disabled>CARGAR JSON EN FORMULARIO</button>
+                <button id="newDocBtn" class="action-btn action-btn-secondary" type="button" disabled>NUEVO DOCUMENTO (LIMPIAR)</button>
+            </section>
 
-                <input type="file" id="editJsonFile" accept=".json">
-                <input type="text" id="editJsonType" placeholder="Tipo para actualizar/sobrescribir">
+            <section class="admin-section">
+                <h2 class="section-title">Editor de Personaje</h2>
 
-                <button id="mergeBtn" class="action-btn action-btn-secondary" type="button" disabled>ANADIR (MERGE, SIN BORRAR CAMPOS)</button>
-                <button id="overwriteBtn" class="action-btn" type="button" disabled>SOBRESCRIBIR JSON EXISTENTE</button>
-                <button id="deleteBtn" class="action-btn action-btn-danger" type="button" disabled>ELIMINAR JSON DE FIREBASE</button>
+                <div class="form-grid">
+                    <label class="field-label" for="fieldId">ID</label>
+                    <input type="text" id="fieldId" placeholder="kazan_rise">
 
-                <div class="admin-info" id="editJsonInfo"></div>
+                    <label class="field-label" for="fieldType">Type</label>
+                    <input type="text" id="fieldType" placeholder="character">
+
+                    <label class="field-label" for="fieldName">Name</label>
+                    <input type="text" id="fieldName" placeholder="Kazan Rise">
+
+                    <label class="field-label" for="fieldSlug">Slug</label>
+                    <input type="text" id="fieldSlug" placeholder="kazan-rise">
+
+                    <label class="field-label" for="metaTitle">Meta Title</label>
+                    <input type="text" id="metaTitle" placeholder="Kazan Rise">
+
+                    <label class="field-label" for="metaImage">Meta Image</label>
+                    <input type="text" id="metaImage" placeholder="assets/images/characters/kazan.webp">
+
+                    <label class="field-label" for="metaDescription">Meta Description</label>
+                    <textarea id="metaDescription" rows="4" placeholder="Descripcion para SEO"></textarea>
+
+                    <label class="field-label" for="aliasInput">Alias (una linea por item o separadas por coma)</label>
+                    <textarea id="aliasInput" rows="3" placeholder="El Titan de Treskal"></textarea>
+
+                    <label class="field-label" for="tagsInput">Tags (una linea por item o separadas por coma)</label>
+                    <textarea id="tagsInput" rows="3" placeholder="legendario\nmago"></textarea>
+
+                    <label class="field-label" for="relCharacters">Relations.characters</label>
+                    <textarea id="relCharacters" rows="3" placeholder="clarisse\njorvin"></textarea>
+
+                    <label class="field-label" for="relLocations">Relations.locations</label>
+                    <textarea id="relLocations" rows="3" placeholder="treskal\nhallheim"></textarea>
+
+                    <label class="field-label" for="relEvents">Relations.events</label>
+                    <textarea id="relEvents" rows="3" placeholder="dragon_milenario"></textarea>
+
+                    <label class="field-label" for="summaryInput">Content.summary</label>
+                    <textarea id="summaryInput" rows="6" placeholder="Resumen del personaje"></textarea>
+                </div>
+
+                <div class="sub-block">
+                    <div class="sub-block-header">
+                        <h3 class="sub-title">Content.sections</h3>
+                        <button id="addSectionBtn" class="mini-btn" type="button" disabled>ANADIR SECCION</button>
+                    </div>
+                    <div id="sectionsContainer" class="sections-container"></div>
+                </div>
+
+                <div class="form-grid">
+                    <label class="field-label" for="extraRace">Extra.race</label>
+                    <input type="text" id="extraRace" placeholder="Humano">
+
+                    <label class="field-label" for="extraBirth">Extra.birth</label>
+                    <input type="text" id="extraBirth" placeholder="15310 (Era del Renacer)">
+
+                    <label class="field-label" for="extraDeath">Extra.death</label>
+                    <input type="text" id="extraDeath" placeholder="15374 (Era del Renacer)">
+
+                    <label class="field-label" for="extraAffiliation">Extra.affiliation (una linea por item o separadas por coma)</label>
+                    <textarea id="extraAffiliation" rows="3" placeholder="santuario"></textarea>
+                </div>
+            </section>
+
+            <section class="admin-section">
+                <h2 class="section-title">Acciones</h2>
+
+                <button id="createBtn" class="action-btn" type="button" disabled>CREAR JSON NUEVO EN FIREBASE</button>
+                <button id="overwriteBtn" class="action-btn action-btn-secondary" type="button" disabled>GUARDAR CAMBIOS SOBRE ID CARGADO</button>
+                <button id="deleteBtn" class="action-btn action-btn-danger" type="button" disabled>ELIMINAR DOCUMENTO CARGADO</button>
+                <button id="downloadPdfBtn" class="action-btn action-btn-secondary" type="button" disabled>DESCARGAR PDF FORMATEADO</button>
+
+                <div class="admin-info" id="editorInfo"></div>
+            </section>
+
+            <section class="admin-section">
+                <h2 class="section-title">Vista Previa JSON</h2>
+                <pre id="jsonPreview" class="json-preview">{}</pre>
             </section>
         </div>
-
     </main>
 
-    <!-- 🔥 Firebase separado -->
+    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
     <script type="module" src="firebase.js"></script>
-
 </body>
 
 </html>

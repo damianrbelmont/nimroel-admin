@@ -18,7 +18,7 @@ import {
     orderBy,
     query,
     runTransaction,
-    setDoc,
+    setDoc
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -32,6 +32,7 @@ const firebaseConfig = {
 
 const ADMIN_UID = "ofe3AaZtvwd7KxY8MqG4182BZpo2";
 const ADMIN_EMAIL = "damianr.belmont@gmail.com";
+const DEFAULT_TYPE = "character";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -46,28 +47,46 @@ const adminBox = document.getElementById("adminBox");
 const authStatus = document.getElementById("authStatus");
 const loginBtn = document.getElementById("loginBtn");
 
-const newJsonFile = document.getElementById("newJsonFile");
-const newJsonId = document.getElementById("newJsonId");
-const newJsonType = document.getElementById("newJsonType");
-const createBtn = document.getElementById("createBtn");
-const newJsonInfo = document.getElementById("newJsonInfo");
-
 const searchIdInput = document.getElementById("searchIdInput");
 const searchBtn = document.getElementById("searchBtn");
-const rebuildIndexBtn = document.getElementById("rebuildIndexBtn");
 const searchResults = document.getElementById("searchResults");
 const selectedIdInput = document.getElementById("selectedIdInput");
 const loadSelectedBtn = document.getElementById("loadSelectedBtn");
-const editJsonFile = document.getElementById("editJsonFile");
-const editJsonType = document.getElementById("editJsonType");
-const mergeBtn = document.getElementById("mergeBtn");
+const newDocBtn = document.getElementById("newDocBtn");
+
+const fieldId = document.getElementById("fieldId");
+const fieldType = document.getElementById("fieldType");
+const fieldName = document.getElementById("fieldName");
+const fieldSlug = document.getElementById("fieldSlug");
+
+const metaTitle = document.getElementById("metaTitle");
+const metaImage = document.getElementById("metaImage");
+const metaDescription = document.getElementById("metaDescription");
+
+const aliasInput = document.getElementById("aliasInput");
+const tagsInput = document.getElementById("tagsInput");
+const relCharacters = document.getElementById("relCharacters");
+const relLocations = document.getElementById("relLocations");
+const relEvents = document.getElementById("relEvents");
+const summaryInput = document.getElementById("summaryInput");
+
+const sectionsContainer = document.getElementById("sectionsContainer");
+const addSectionBtn = document.getElementById("addSectionBtn");
+
+const extraRace = document.getElementById("extraRace");
+const extraBirth = document.getElementById("extraBirth");
+const extraDeath = document.getElementById("extraDeath");
+const extraAffiliation = document.getElementById("extraAffiliation");
+
+const createBtn = document.getElementById("createBtn");
 const overwriteBtn = document.getElementById("overwriteBtn");
 const deleteBtn = document.getElementById("deleteBtn");
-const editJsonInfo = document.getElementById("editJsonInfo");
+const downloadPdfBtn = document.getElementById("downloadPdfBtn");
+
+const editorInfo = document.getElementById("editorInfo");
+const jsonPreview = document.getElementById("jsonPreview");
 
 let isAuthorized = false;
-let newJsonData = null;
-let editJsonData = null;
 let selectedEditId = "";
 
 function setStatus(message, isError = false) {
@@ -85,13 +104,10 @@ function setAdminEnabled(enabled) {
     adminBox.classList.toggle("is-disabled", !enabled);
     adminBox.setAttribute("aria-disabled", String(!enabled));
 
-    const controls = adminBox.querySelectorAll("input, button");
+    const controls = adminBox.querySelectorAll("input, textarea, button");
     controls.forEach((control) => {
-        if (control.id === "selectedIdInput") return;
         control.disabled = !enabled;
     });
-
-    selectedIdInput.disabled = true;
 }
 
 function createInfoLine(label, value) {
@@ -103,11 +119,11 @@ function createInfoLine(label, value) {
     return line;
 }
 
-function renderInfo(target, data, fallbackId = "") {
-    target.textContent = "";
-    target.appendChild(createInfoLine("Nombre", data.name));
-    target.appendChild(createInfoLine("ID", data.id || fallbackId));
-    target.appendChild(createInfoLine("Tipo", data.type));
+function setEditorMessage(lines) {
+    editorInfo.textContent = "";
+    lines.forEach(([label, value]) => {
+        editorInfo.appendChild(createInfoLine(label, value));
+    });
 }
 
 function isCurrentUserAuthorized(user) {
@@ -124,14 +140,36 @@ function ensureAuthorized() {
     return false;
 }
 
-function validateId(id) {
-    const trimmed = (id || "").trim();
+function normalizeLineBreaks(value) {
+    return (value || "").toString().replace(/\r\n?/g, "\n");
+}
+
+function cleanText(value) {
+    return normalizeLineBreaks(value).trim();
+}
+
+function parseList(value) {
+    const source = normalizeLineBreaks(value);
+    const entries = source
+        .split(/[\n,]/)
+        .map((entry) => entry.trim())
+        .filter(Boolean);
+    return [...new Set(entries)];
+}
+
+function formatList(values) {
+    if (!Array.isArray(values)) return "";
+    return values.join("\n");
+}
+
+function validateId(id, silent = false) {
+    const trimmed = cleanText(id);
     if (!trimmed) {
-        alert("Debes indicar un ID.");
+        if (!silent) alert("Debes indicar un ID.");
         return null;
     }
     if (trimmed.includes("/")) {
-        alert("El ID no puede contener '/'.");
+        if (!silent) alert("El ID no puede contener '/'.");
         return null;
     }
     return trimmed;
@@ -220,36 +258,246 @@ async function updateIndexForDelete(id) {
     });
 }
 
-async function rebuildIndexFromItems() {
-    const snapshot = await getDocs(query(itemsCollection, orderBy(documentId()), limit(1000)));
-    const rebuilt = normalizeIndexData({});
-
-    snapshot.docs.forEach((itemDoc) => {
-        const itemData = itemDoc.data();
-        const indexKey = normalizeTypeToIndexKey(itemData.type);
-        if (!indexKey) return;
-        if (!Array.isArray(rebuilt[indexKey])) rebuilt[indexKey] = [];
-        rebuilt[indexKey].push(itemDoc.id);
-    });
-
-    sortIndexArrays(rebuilt);
-    await setDoc(indexDocRef, rebuilt);
-    return snapshot.size;
+function sanitizePdfText(value) {
+    return normalizeLineBreaks(value)
+        .replace(/[^\u0009\u000A\u000D\u0020-\u00FF]/g, "")
+        .trim();
 }
 
-function readJsonFile(file) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            try {
-                resolve(JSON.parse(event.target.result));
-            } catch (error) {
-                reject(error);
-            }
-        };
-        reader.onerror = () => reject(reader.error);
-        reader.readAsText(file);
+function createSectionCard(section = {}) {
+    const card = document.createElement("div");
+    card.className = "section-card";
+
+    const cardTitle = document.createElement("p");
+    cardTitle.className = "section-card-title";
+    card.appendChild(cardTitle);
+
+    const idLabel = document.createElement("label");
+    idLabel.className = "field-label";
+    idLabel.textContent = "Section ID";
+    card.appendChild(idLabel);
+
+    const idInput = document.createElement("input");
+    idInput.type = "text";
+    idInput.className = "section-id";
+    idInput.placeholder = "early_life";
+    idInput.value = (section.id || "").toString();
+    card.appendChild(idInput);
+
+    const titleLabel = document.createElement("label");
+    titleLabel.className = "field-label";
+    titleLabel.textContent = "Section Title";
+    card.appendChild(titleLabel);
+
+    const titleInput = document.createElement("input");
+    titleInput.type = "text";
+    titleInput.className = "section-title-input";
+    titleInput.placeholder = "Vida temprana";
+    titleInput.value = (section.title || "").toString();
+    card.appendChild(titleInput);
+
+    const textLabel = document.createElement("label");
+    textLabel.className = "field-label";
+    textLabel.textContent = "Section Text";
+    card.appendChild(textLabel);
+
+    const textArea = document.createElement("textarea");
+    textArea.className = "section-text";
+    textArea.rows = 8;
+    textArea.placeholder = "Texto de la seccion...";
+    textArea.value = (section.text || "").toString();
+    card.appendChild(textArea);
+
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.className = "section-remove";
+    removeButton.textContent = "ELIMINAR SECCION";
+    removeButton.addEventListener("click", () => {
+        card.remove();
+        refreshSectionTitles();
+        updateJsonPreview();
     });
+    card.appendChild(removeButton);
+
+    [idInput, titleInput, textArea].forEach((control) => {
+        control.addEventListener("input", updateJsonPreview);
+    });
+
+    sectionsContainer.appendChild(card);
+    refreshSectionTitles();
+}
+
+function refreshSectionTitles() {
+    const cards = sectionsContainer.querySelectorAll(".section-card");
+    cards.forEach((card, index) => {
+        const title = card.querySelector(".section-card-title");
+        if (title) {
+            title.textContent = `Seccion ${index + 1}`;
+        }
+    });
+}
+
+function renderSections(sections) {
+    sectionsContainer.textContent = "";
+    if (Array.isArray(sections) && sections.length > 0) {
+        sections.forEach((section) => createSectionCard(section));
+        return;
+    }
+    createSectionCard();
+}
+
+function collectSections(strict = false) {
+    const cards = sectionsContainer.querySelectorAll(".section-card");
+    const sections = [];
+    const ids = new Set();
+
+    for (let i = 0; i < cards.length; i += 1) {
+        const card = cards[i];
+        const id = cleanText(card.querySelector(".section-id")?.value);
+        const title = cleanText(card.querySelector(".section-title-input")?.value);
+        const text = cleanText(card.querySelector(".section-text")?.value);
+
+        if (!id && !title && !text) {
+            continue;
+        }
+
+        if (strict && (!id || !title || !text)) {
+            alert(`La seccion ${i + 1} debe tener id, title y text.`);
+            return null;
+        }
+
+        if (id && ids.has(id)) {
+            if (strict) {
+                alert(`Hay IDs de seccion repetidos: ${id}`);
+                return null;
+            }
+            continue;
+        }
+
+        if (id) ids.add(id);
+
+        sections.push({ id, title, text });
+    }
+
+    return sections;
+}
+
+function buildPayload(strict = false) {
+    const id = validateId(fieldId.value, !strict);
+    const type = cleanText(fieldType.value);
+    const name = cleanText(fieldName.value);
+    const slug = cleanText(fieldSlug.value);
+
+    const sections = collectSections(strict);
+    if (!sections) return null;
+
+    const missing = [];
+    if (strict && !id) missing.push("id");
+    if (strict && !type) missing.push("type");
+    if (strict && !name) missing.push("name");
+    if (strict && !slug) missing.push("slug");
+
+    if (strict && missing.length > 0) {
+        alert(`Faltan campos obligatorios: ${missing.join(", ")}`);
+        return null;
+    }
+
+    return {
+        id: id || "",
+        type: type || "",
+        name: name || "",
+        slug: slug || "",
+        meta: {
+            title: cleanText(metaTitle.value),
+            description: cleanText(metaDescription.value),
+            image: cleanText(metaImage.value)
+        },
+        alias: parseList(aliasInput.value),
+        tags: parseList(tagsInput.value),
+        relations: {
+            characters: parseList(relCharacters.value),
+            locations: parseList(relLocations.value),
+            events: parseList(relEvents.value)
+        },
+        content: {
+            summary: cleanText(summaryInput.value),
+            sections
+        },
+        extra: {
+            race: cleanText(extraRace.value),
+            birth: cleanText(extraBirth.value),
+            death: cleanText(extraDeath.value),
+            affiliation: parseList(extraAffiliation.value)
+        }
+    };
+}
+
+function fillFormFromPayload(payload) {
+    fieldId.value = (payload.id || "").toString();
+    fieldType.value = (payload.type || DEFAULT_TYPE).toString();
+    fieldName.value = (payload.name || "").toString();
+    fieldSlug.value = (payload.slug || "").toString();
+
+    metaTitle.value = (payload.meta?.title || "").toString();
+    metaDescription.value = (payload.meta?.description || "").toString();
+    metaImage.value = (payload.meta?.image || "").toString();
+
+    aliasInput.value = formatList(payload.alias);
+    tagsInput.value = formatList(payload.tags);
+
+    relCharacters.value = formatList(payload.relations?.characters);
+    relLocations.value = formatList(payload.relations?.locations);
+    relEvents.value = formatList(payload.relations?.events);
+
+    summaryInput.value = (payload.content?.summary || "").toString();
+    renderSections(payload.content?.sections);
+
+    extraRace.value = (payload.extra?.race || "").toString();
+    extraBirth.value = (payload.extra?.birth || "").toString();
+    extraDeath.value = (payload.extra?.death || "").toString();
+    extraAffiliation.value = formatList(payload.extra?.affiliation);
+
+    updateJsonPreview();
+}
+
+function clearForm() {
+    fieldId.value = "";
+    fieldType.value = DEFAULT_TYPE;
+    fieldName.value = "";
+    fieldSlug.value = "";
+
+    metaTitle.value = "";
+    metaDescription.value = "";
+    metaImage.value = "";
+
+    aliasInput.value = "";
+    tagsInput.value = "";
+
+    relCharacters.value = "";
+    relLocations.value = "";
+    relEvents.value = "";
+
+    summaryInput.value = "";
+    renderSections([]);
+
+    extraRace.value = "";
+    extraBirth.value = "";
+    extraDeath.value = "";
+    extraAffiliation.value = "";
+
+    selectedEditId = "";
+    selectedIdInput.value = "";
+    setEditorMessage([["Estado", "Documento nuevo en blanco"]]);
+    updateJsonPreview();
+}
+
+function updateJsonPreview() {
+    const payload = buildPayload(false);
+    if (!payload) {
+        jsonPreview.textContent = "{}";
+        return;
+    }
+    jsonPreview.textContent = JSON.stringify(payload, null, 2);
 }
 
 function selectEditId(id) {
@@ -292,45 +540,147 @@ async function fetchIdsBySearch(searchValue) {
     if (!term) return allIds.slice(0, 25);
     return allIds
         .filter((id) => id.toLowerCase().includes(term))
-        .slice(0, 50);
+        .slice(0, 60);
 }
 
-function buildNewPayload() {
-    if (!newJsonData) {
-        alert("Carga primero un JSON local en la seccion de nuevo.");
-        return null;
+function exportPayloadToPdf(payload) {
+    if (!window.jspdf || !window.jspdf.jsPDF) {
+        alert("No se pudo cargar la libreria PDF.");
+        return;
     }
 
-    const id = validateId(newJsonId.value);
-    if (!id) return null;
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ unit: "pt", format: "a4" });
 
-    const type = newJsonType.value.trim();
-    if (!type) {
-        alert("Debes indicar el tipo.");
-        return null;
+    const margin = 48;
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const maxWidth = pageWidth - margin * 2;
+    const lineHeight = 14;
+    let y = margin;
+
+    const ensureSpace = (height = lineHeight) => {
+        if (y + height <= pageHeight - margin) return;
+        pdf.addPage();
+        y = margin;
+    };
+
+    const writeWrapped = (text, indent = 0) => {
+        const safe = sanitizePdfText(text) || "-";
+        const lines = pdf.splitTextToSize(safe, maxWidth - indent);
+        lines.forEach((line) => {
+            ensureSpace(lineHeight);
+            pdf.text(line, margin + indent, y);
+            y += lineHeight;
+        });
+    };
+
+    const writeTitle = (text) => {
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(22);
+        const lines = pdf.splitTextToSize(sanitizePdfText(text) || "Documento Nimroel", maxWidth);
+        lines.forEach((line) => {
+            ensureSpace(24);
+            pdf.text(line, margin, y);
+            y += 24;
+        });
+        y += 8;
+    };
+
+    const writeLabel = (label) => {
+        ensureSpace(16);
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(11);
+        pdf.text((label || "").toUpperCase(), margin, y);
+        y += 14;
+    };
+
+    const writeField = (label, value) => {
+        if (value == null) return;
+        if (Array.isArray(value) && value.length === 0) return;
+        if (!Array.isArray(value) && sanitizePdfText(value) === "") return;
+
+        writeLabel(label);
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(11);
+        const body = Array.isArray(value) ? value.join(", ") : value;
+        writeWrapped(body, 10);
+        y += 6;
+    };
+
+    const drawDivider = () => {
+        ensureSpace(12);
+        pdf.setDrawColor(184, 155, 94);
+        pdf.setLineWidth(0.7);
+        pdf.line(margin, y, pageWidth - margin, y);
+        y += 12;
+    };
+
+    const title = payload.meta?.title || payload.name || payload.id || "Documento Nimroel";
+    writeTitle(title);
+
+    writeField("ID", payload.id);
+    writeField("Type", payload.type);
+    writeField("Name", payload.name);
+    writeField("Slug", payload.slug);
+    writeField("Meta Description", payload.meta?.description);
+    writeField("Meta Image", payload.meta?.image);
+    writeField("Alias", payload.alias);
+    writeField("Tags", payload.tags);
+
+    writeField("Relations Characters", payload.relations?.characters);
+    writeField("Relations Locations", payload.relations?.locations);
+    writeField("Relations Events", payload.relations?.events);
+
+    writeField("Race", payload.extra?.race);
+    writeField("Birth", payload.extra?.birth);
+    writeField("Death", payload.extra?.death);
+    writeField("Affiliation", payload.extra?.affiliation);
+
+    drawDivider();
+    writeLabel("Summary");
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(11);
+    writeWrapped(payload.content?.summary || "-", 10);
+
+    y += 8;
+    drawDivider();
+    writeLabel("Sections");
+
+    const sections = Array.isArray(payload.content?.sections) ? payload.content.sections : [];
+    if (sections.length === 0) {
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(11);
+        writeWrapped("Sin secciones.", 10);
+    } else {
+        sections.forEach((section, index) => {
+            ensureSpace(18);
+            pdf.setFont("helvetica", "bold");
+            pdf.setFontSize(13);
+            pdf.text(`${index + 1}. ${sanitizePdfText(section.title) || "Sin titulo"}`, margin + 10, y);
+            y += 16;
+
+            pdf.setFont("helvetica", "bold");
+            pdf.setFontSize(10);
+            ensureSpace(13);
+            pdf.text("ID:", margin + 10, y);
+            pdf.setFont("helvetica", "normal");
+            pdf.text(sanitizePdfText(section.id) || "-", margin + 28, y);
+            y += 13;
+
+            pdf.setFont("helvetica", "normal");
+            pdf.setFontSize(11);
+            writeWrapped(section.text || "-", 10);
+            y += 7;
+
+            drawDivider();
+        });
     }
 
-    return { ...newJsonData, id, type };
-}
-
-function buildEditPayload() {
-    if (!selectedEditId) {
-        alert("Selecciona antes un ID de Firebase.");
-        return null;
-    }
-
-    if (!editJsonData) {
-        alert("Carga un JSON local para editar el documento existente.");
-        return null;
-    }
-
-    const type = editJsonType.value.trim();
-    if (!type) {
-        alert("Debes indicar el tipo para la actualizacion.");
-        return null;
-    }
-
-    return { ...editJsonData, id: selectedEditId, type };
+    const safeName = (payload.id || payload.slug || "nimroel_document")
+        .toString()
+        .replace(/[^a-zA-Z0-9_-]/g, "_");
+    pdf.save(`${safeName}.pdf`);
 }
 
 async function startGoogleLogin() {
@@ -369,6 +719,168 @@ loginBtn.addEventListener("click", async () => {
     await startGoogleLogin();
 });
 
+searchBtn.addEventListener("click", async () => {
+    if (!ensureAuthorized()) return;
+
+    try {
+        const ids = await fetchIdsBySearch(searchIdInput.value);
+        renderSearchResults(ids);
+    } catch (error) {
+        console.error("Search error:", error);
+        alert("Error al buscar IDs.");
+    }
+});
+
+loadSelectedBtn.addEventListener("click", async () => {
+    if (!ensureAuthorized()) return;
+
+    const chosen = validateId(selectedIdInput.value || selectedEditId);
+    if (!chosen) return;
+
+    try {
+        const snapshot = await getDoc(doc(db, "items", chosen));
+        if (!snapshot.exists()) {
+            alert("No existe un documento con ese ID.");
+            return;
+        }
+
+        const data = snapshot.data() || {};
+        data.id = chosen;
+        fillFormFromPayload(data);
+        selectEditId(chosen);
+
+        setEditorMessage([
+            ["Estado", "Documento cargado desde Firebase"],
+            ["ID cargado", chosen],
+            ["Nombre", data.name || "-"]
+        ]);
+    } catch (error) {
+        console.error("Load error:", error);
+        alert("Error al cargar el documento.");
+    }
+});
+
+newDocBtn.addEventListener("click", () => {
+    if (!ensureAuthorized()) return;
+    clearForm();
+});
+
+addSectionBtn.addEventListener("click", () => {
+    createSectionCard();
+    updateJsonPreview();
+});
+
+createBtn.addEventListener("click", async () => {
+    if (!ensureAuthorized()) return;
+
+    const payload = buildPayload(true);
+    if (!payload) return;
+
+    try {
+        const itemRef = doc(db, "items", payload.id);
+        const existing = await getDoc(itemRef);
+
+        if (existing.exists()) {
+            alert("Ese ID ya existe. Carga el documento y usa guardar cambios.");
+            return;
+        }
+
+        await setDoc(itemRef, payload);
+        await updateIndexForUpsert(payload.id, payload.type);
+
+        selectEditId(payload.id);
+        setEditorMessage([
+            ["Estado", "Documento nuevo creado"],
+            ["ID", payload.id],
+            ["Type", payload.type]
+        ]);
+
+        const ids = await fetchIdsBySearch(searchIdInput.value);
+        renderSearchResults(ids);
+        alert("Documento creado en Firebase e indice actualizado.");
+    } catch (error) {
+        console.error("Create error:", error);
+        alert("Error al crear el documento.");
+    }
+});
+
+overwriteBtn.addEventListener("click", async () => {
+    if (!ensureAuthorized()) return;
+
+    if (!selectedEditId) {
+        alert("Primero carga un documento desde Firebase para editarlo.");
+        return;
+    }
+
+    const payload = buildPayload(true);
+    if (!payload) return;
+
+    if (payload.id !== selectedEditId) {
+        alert("Para sobrescribir, el campo ID debe coincidir con el documento cargado.");
+        return;
+    }
+
+    try {
+        const itemRef = doc(db, "items", selectedEditId);
+        const existing = await getDoc(itemRef);
+        if (!existing.exists()) {
+            alert("El documento cargado ya no existe. Cargalo de nuevo.");
+            return;
+        }
+
+        await setDoc(itemRef, payload);
+        await updateIndexForUpsert(payload.id, payload.type);
+
+        setEditorMessage([
+            ["Estado", "Documento sobrescrito"],
+            ["ID", payload.id],
+            ["Type", payload.type]
+        ]);
+
+        alert("Cambios guardados. El JSON anterior fue sustituido.");
+    } catch (error) {
+        console.error("Overwrite error:", error);
+        alert("Error al guardar cambios.");
+    }
+});
+
+deleteBtn.addEventListener("click", async () => {
+    if (!ensureAuthorized()) return;
+
+    if (!selectedEditId) {
+        alert("No hay documento cargado para eliminar.");
+        return;
+    }
+
+    const confirmed = confirm(`Vas a eliminar items/${selectedEditId}. Continuar?`);
+    if (!confirmed) return;
+
+    try {
+        await deleteDoc(doc(db, "items", selectedEditId));
+        await updateIndexForDelete(selectedEditId);
+
+        clearForm();
+        const ids = await fetchIdsBySearch(searchIdInput.value);
+        renderSearchResults(ids);
+
+        alert("Documento eliminado e indice actualizado.");
+    } catch (error) {
+        console.error("Delete error:", error);
+        alert("Error al eliminar el documento.");
+    }
+});
+
+downloadPdfBtn.addEventListener("click", () => {
+    if (!ensureAuthorized()) return;
+    const payload = buildPayload(false);
+    if (!payload) return;
+    exportPayloadToPdf(payload);
+});
+
+adminBox.addEventListener("input", () => {
+    updateJsonPreview();
+});
+
 onAuthStateChanged(auth, async (user) => {
     if (!user) {
         isAuthorized = false;
@@ -399,177 +911,14 @@ onAuthStateChanged(auth, async (user) => {
         console.error("Initial list error:", error);
         renderSearchResults([]);
     }
-});
 
-newJsonFile.addEventListener("change", async (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    try {
-        newJsonData = await readJsonFile(file);
-        newJsonId.value = (newJsonData.id || "").toString();
-        newJsonType.value = (newJsonData.type || "").toString();
-        renderInfo(newJsonInfo, newJsonData, newJsonId.value);
-    } catch (error) {
-        console.error("Invalid new JSON:", error);
-        newJsonData = null;
-        newJsonInfo.textContent = "";
-        alert("JSON invalido en la seccion de nuevo.");
-    }
-});
-
-createBtn.addEventListener("click", async () => {
-    if (!ensureAuthorized()) return;
-    const payload = buildNewPayload();
-    if (!payload) return;
-
-    try {
-        const itemRef = doc(db, "items", payload.id);
-        const existing = await getDoc(itemRef);
-        if (existing.exists()) {
-            alert("Ese ID ya existe en Firebase. Usa la seccion de edicion.");
-            return;
-        }
-
-        await setDoc(itemRef, payload);
-        await updateIndexForUpsert(payload.id, payload.type);
-        alert("JSON nuevo subido correctamente. Indice actualizado.");
-        const updatedIds = await fetchIdsBySearch(searchIdInput.value);
-        renderSearchResults(updatedIds);
-    } catch (error) {
-        console.error("Create error:", error);
-        alert("Error al subir JSON nuevo.");
-    }
-});
-
-searchBtn.addEventListener("click", async () => {
-    if (!ensureAuthorized()) return;
-
-    try {
-        const ids = await fetchIdsBySearch(searchIdInput.value);
-        renderSearchResults(ids);
-    } catch (error) {
-        console.error("Search error:", error);
-        alert("Error al buscar IDs.");
-    }
-});
-
-rebuildIndexBtn.addEventListener("click", async () => {
-    if (!ensureAuthorized()) return;
-
-    const confirmed = confirm("Se reconstruira meta/index usando todos los documentos de items. Continuar?");
-    if (!confirmed) return;
-
-    try {
-        const total = await rebuildIndexFromItems();
-        alert(`Indice reconstruido correctamente desde ${total} documento(s).`);
-    } catch (error) {
-        console.error("Rebuild index error:", error);
-        alert("Error al reconstruir el indice.");
-    }
-});
-
-loadSelectedBtn.addEventListener("click", async () => {
-    if (!ensureAuthorized()) return;
-    const id = validateId(selectedIdInput.value);
-    if (!id) return;
-    selectEditId(id);
-
-    try {
-        const snapshot = await getDoc(doc(db, "items", id));
-        if (!snapshot.exists()) {
-            alert("No existe un documento con ese ID.");
-            return;
-        }
-
-        const existingData = snapshot.data();
-        editJsonType.value = (existingData.type || "").toString();
-        editJsonInfo.textContent = "";
-        editJsonInfo.appendChild(createInfoLine("ID seleccionado", id));
-        editJsonInfo.appendChild(createInfoLine("Nombre actual", existingData.name));
-        editJsonInfo.appendChild(createInfoLine("Tipo actual", existingData.type));
-        editJsonInfo.appendChild(createInfoLine("Estado", "Listo para anadir, sobrescribir o eliminar"));
-    } catch (error) {
-        console.error("Load selected error:", error);
-        alert("Error al cargar el JSON seleccionado.");
-    }
-});
-
-editJsonFile.addEventListener("change", async (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    try {
-        editJsonData = await readJsonFile(file);
-        editJsonType.value = (editJsonData.type || editJsonType.value || "").toString();
-        renderInfo(editJsonInfo, editJsonData, selectedEditId);
-    } catch (error) {
-        console.error("Invalid edit JSON:", error);
-        editJsonData = null;
-        alert("JSON invalido en la seccion de edicion.");
-    }
-});
-
-mergeBtn.addEventListener("click", async () => {
-    if (!ensureAuthorized()) return;
-    const payload = buildEditPayload();
-    if (!payload) return;
-
-    try {
-        await setDoc(doc(db, "items", payload.id), payload, { merge: true });
-        await updateIndexForUpsert(payload.id, payload.type);
-        alert("JSON actualizado con anadir (merge). Indice actualizado.");
-    } catch (error) {
-        console.error("Merge error:", error);
-        alert("Error al anadir informacion.");
-    }
-});
-
-overwriteBtn.addEventListener("click", async () => {
-    if (!ensureAuthorized()) return;
-    const payload = buildEditPayload();
-    if (!payload) return;
-
-    try {
-        await setDoc(doc(db, "items", payload.id), payload);
-        await updateIndexForUpsert(payload.id, payload.type);
-        alert("JSON sobrescrito completamente. Indice actualizado.");
-    } catch (error) {
-        console.error("Overwrite error:", error);
-        alert("Error al sobrescribir JSON.");
-    }
-});
-
-deleteBtn.addEventListener("click", async () => {
-    if (!ensureAuthorized()) return;
-    const id = validateId(selectedIdInput.value);
-    if (!id) return;
-    selectEditId(id);
-
-    const confirmed = confirm(`Vas a eliminar items/${id} de forma permanente. Continuar?`);
-    if (!confirmed) return;
-
-    try {
-        await deleteDoc(doc(db, "items", id));
-        await updateIndexForDelete(id);
-        editJsonData = null;
-        editJsonInfo.textContent = "";
-        selectedEditId = "";
-        selectedIdInput.value = "";
-        alert("Documento eliminado. Indice actualizado.");
-        const updatedIds = await fetchIdsBySearch(searchIdInput.value);
-        renderSearchResults(updatedIds);
-    } catch (error) {
-        console.error("Delete error:", error);
-        alert("Error al eliminar documento.");
-    }
+    clearForm();
 });
 
 setAdminEnabled(false);
 setStatus("Verificando sesion...");
 setAuthButtonMode("login");
 
-// Force fresh login every page load.
 signOut(auth).catch(() => {
     setStatus("Debes iniciar sesion para continuar.");
 });
