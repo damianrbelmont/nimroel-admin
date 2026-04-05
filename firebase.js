@@ -272,6 +272,41 @@ function sanitizePdfText(value) {
         .trim();
 }
 
+function cleanNarrativePdfText(value) {
+    const normalized = decodeEscapedLineBreaks(normalizeLineBreaks(value))
+        .replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, "$2")
+        .replace(/\[\[([^\]]+)\]\]/g, "$1")
+        .replace(/<br\s*\/?>/gi, "\n")
+        .replace(/<\/p>/gi, "\n\n")
+        .replace(/<[^>]+>/g, "")
+        .replace(/&nbsp;/gi, " ")
+        .replace(/&amp;/gi, "&")
+        .replace(/&lt;/gi, "<")
+        .replace(/&gt;/gi, ">")
+        .replace(/&quot;/gi, "\"")
+        .replace(/&#39;/gi, "'");
+
+    return sanitizePdfText(
+        normalized
+            .split("\n")
+            .map((line) => line.replace(/\s+$/g, ""))
+            .join("\n")
+            .replace(/\n{3,}/g, "\n\n")
+    );
+}
+
+function slugifyFileName(value) {
+    const slug = (value || "")
+        .toString()
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]+/g, "_")
+        .replace(/^_+|_+$/g, "");
+
+    return slug || "nimroel_document";
+}
+
 function createSectionCard(section = {}) {
     const card = document.createElement("div");
     card.className = "section-card";
@@ -609,135 +644,230 @@ function exportPayloadToPdf(payload) {
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ unit: "pt", format: "a4" });
 
-    const margin = 48;
+    const documentName = cleanNarrativePdfText(
+        payload.name || payload.meta?.title || payload.id || "Documento Nimroel"
+    );
+    const aliases = Array.isArray(payload.alias)
+        ? payload.alias
+            .map((entry) => cleanNarrativePdfText(entry))
+            .filter(Boolean)
+        : [];
+    const aliasText = aliases.join(" / ");
+
+    const summaryText = cleanNarrativePdfText(payload.content?.summary || payload.summary || "");
+    const rawSections = Array.isArray(payload.content?.sections)
+        ? payload.content.sections
+        : Array.isArray(payload.sections)
+            ? payload.sections
+            : [];
+
+    const sections = rawSections
+        .map((section, index) => ({
+            title: cleanNarrativePdfText(section?.title || section?.tittle || `Seccion ${index + 1}`),
+            text: cleanNarrativePdfText(section?.text || "")
+        }))
+        .filter((section) => section.text);
+
+    const relationLines = [];
+    const relationMap = payload.relations && typeof payload.relations === "object" ? payload.relations : {};
+    Object.entries(relationMap).forEach(([key, value]) => {
+        const values = Array.isArray(value) ? value : [];
+        const cleanValues = values.map((entry) => cleanNarrativePdfText(entry)).filter(Boolean);
+        if (cleanValues.length > 0) {
+            relationLines.push(`${key}: ${cleanValues.join(", ")}`);
+        }
+    });
+
+    const appendixFields = [
+        { label: "id", value: cleanNarrativePdfText(payload.id) },
+        { label: "type", value: cleanNarrativePdfText(payload.type) },
+        { label: "slug", value: cleanNarrativePdfText(payload.slug) },
+        { label: "meta.image", value: cleanNarrativePdfText(payload.meta?.image) },
+        { label: "relations", value: relationLines.join("\n") }
+    ].filter((field) => field.value);
+
+    const marginX = 68;
+    const marginBottom = 60;
+    const headerTop = 34;
+    const contentTop = 88;
+    const lineHeight = 17;
+    const paragraphGap = 8;
     const pageWidth = pdf.internal.pageSize.getWidth();
     const pageHeight = pdf.internal.pageSize.getHeight();
-    const maxWidth = pageWidth - margin * 2;
-    const lineHeight = 14;
-    let y = margin;
+    const maxWidth = pageWidth - marginX * 2;
+    let y = contentTop;
 
     const ensureSpace = (height = lineHeight) => {
-        if (y + height <= pageHeight - margin) return;
+        if (y + height <= pageHeight - marginBottom) return;
         pdf.addPage();
-        y = margin;
+        drawHeader();
+        y = contentTop;
     };
 
-    const writeWrapped = (text, indent = 0) => {
-        const safe = sanitizePdfText(text) || "-";
-        const lines = pdf.splitTextToSize(safe, maxWidth - indent);
+    const runningHeader = `${documentName || "Documento"} \u2014 Cr\u00f3nicas de Nimroel`;
+
+    const drawHeader = () => {
+        pdf.setFont("times", "italic");
+        pdf.setFontSize(10);
+        pdf.setTextColor(90, 90, 90);
+        pdf.text(runningHeader, pageWidth / 2, headerTop, { align: "center" });
+        pdf.setDrawColor(196, 196, 196);
+        pdf.setLineWidth(0.6);
+        pdf.line(marginX, headerTop + 10, pageWidth - marginX, headerTop + 10);
+        pdf.setTextColor(20, 20, 20);
+    };
+
+    const drawCenteredText = (text, fontSize, style, bottomGap = 0) => {
+        const clean = cleanNarrativePdfText(text);
+        if (!clean) return;
+        pdf.setFont("times", style);
+        pdf.setFontSize(fontSize);
+        const lines = pdf.splitTextToSize(clean, maxWidth);
         lines.forEach((line) => {
-            ensureSpace(lineHeight);
-            pdf.text(line, margin + indent, y);
-            y += lineHeight;
+            ensureSpace(fontSize + 6);
+            pdf.text(line, pageWidth / 2, y, { align: "center" });
+            y += fontSize + 6;
+        });
+        y += bottomGap;
+    };
+
+    const drawJustifiedLine = (line, x, yPos, width) => {
+        const words = line.trim().split(/\s+/);
+        if (words.length < 2) {
+            pdf.text(line, x, yPos);
+            return;
+        }
+
+        const textWidth = pdf.getTextWidth(words.join(" "));
+        const slots = words.length - 1;
+        const regularSpace = pdf.getTextWidth(" ");
+        const extra = width - textWidth;
+
+        if (extra <= 0) {
+            pdf.text(line, x, yPos);
+            return;
+        }
+
+        const addPerGap = extra / slots;
+        let cursorX = x;
+
+        words.forEach((word, index) => {
+            pdf.text(word, cursorX, yPos);
+            cursorX += pdf.getTextWidth(word);
+            if (index < slots) {
+                cursorX += regularSpace + addPerGap;
+            }
         });
     };
 
-    const writeTitle = (text) => {
-        pdf.setFont("helvetica", "bold");
-        pdf.setFontSize(22);
-        const lines = pdf.splitTextToSize(sanitizePdfText(text) || "Documento Nimroel", maxWidth);
-        lines.forEach((line) => {
-            ensureSpace(24);
-            pdf.text(line, margin, y);
-            y += 24;
+    const drawParagraphs = (text, options = {}) => {
+        const {
+            fontSize = 12,
+            fontStyle = "normal",
+            indent = 0,
+            justify = true
+        } = options;
+
+        const clean = cleanNarrativePdfText(text);
+        if (!clean) return;
+
+        pdf.setFont("times", fontStyle);
+        pdf.setFontSize(fontSize);
+
+        const paragraphs = clean
+            .split(/\n{2,}/)
+            .map((paragraph) => paragraph.trim())
+            .filter(Boolean);
+
+        paragraphs.forEach((paragraph) => {
+            const lines = pdf.splitTextToSize(paragraph, maxWidth - indent);
+
+            lines.forEach((line, index) => {
+                ensureSpace(lineHeight);
+                const isLast = index === lines.length - 1;
+                const canJustify = justify && !isLast && /\s/.test(line.trim());
+
+                if (canJustify) {
+                    drawJustifiedLine(line, marginX + indent, y, maxWidth - indent);
+                } else {
+                    pdf.text(line, marginX + indent, y);
+                }
+                y += lineHeight;
+            });
+
+            y += paragraphGap;
         });
-        y += 8;
-    };
-
-    const writeLabel = (label) => {
-        ensureSpace(16);
-        pdf.setFont("helvetica", "bold");
-        pdf.setFontSize(11);
-        pdf.text((label || "").toUpperCase(), margin, y);
-        y += 14;
-    };
-
-    const writeField = (label, value) => {
-        if (value == null) return;
-        if (Array.isArray(value) && value.length === 0) return;
-        if (!Array.isArray(value) && sanitizePdfText(value) === "") return;
-
-        writeLabel(label);
-        pdf.setFont("helvetica", "normal");
-        pdf.setFontSize(11);
-        const body = Array.isArray(value) ? value.join(", ") : value;
-        writeWrapped(body, 10);
-        y += 6;
     };
 
     const drawDivider = () => {
-        ensureSpace(12);
+        ensureSpace(24);
+        y += 4;
         pdf.setDrawColor(184, 155, 94);
-        pdf.setLineWidth(0.7);
-        pdf.line(margin, y, pageWidth - margin, y);
-        y += 12;
+        pdf.setLineWidth(0.8);
+        pdf.line(marginX, y, pageWidth - marginX, y);
+        y += 18;
     };
 
-    const title = payload.meta?.title || payload.name || payload.id || "Documento Nimroel";
-    writeTitle(title);
+    const drawSectionTitle = (text) => {
+        const clean = cleanNarrativePdfText(text);
+        if (!clean) return;
+        pdf.setFont("times", "bold");
+        pdf.setFontSize(18);
+        const lines = pdf.splitTextToSize(clean, maxWidth);
+        lines.forEach((line) => {
+            ensureSpace(24);
+            pdf.text(line, marginX, y);
+            y += 24;
+        });
+        y += 4;
+    };
 
-    writeField("ID", payload.id);
-    writeField("Type", payload.type);
-    writeField("Name", payload.name);
-    writeField("Slug", payload.slug);
-    writeField("Meta Description", payload.meta?.description);
-    writeField("Meta Image", payload.meta?.image);
-    writeField("Alias", payload.alias);
-    writeField("Tags", payload.tags);
-
-    writeField("Relations Characters", payload.relations?.characters);
-    writeField("Relations Locations", payload.relations?.locations);
-    writeField("Relations Events", payload.relations?.events);
-
-    writeField("Race", payload.extra?.race);
-    writeField("Birth", payload.extra?.birth);
-    writeField("Death", payload.extra?.death);
-    writeField("Affiliation", payload.extra?.affiliation);
-
-    drawDivider();
-    writeLabel("Summary");
-    pdf.setFont("helvetica", "normal");
-    pdf.setFontSize(11);
-    writeWrapped(payload.content?.summary || "-", 10);
-
-    y += 8;
-    drawDivider();
-    writeLabel("Sections");
-
-    const sections = Array.isArray(payload.content?.sections) ? payload.content.sections : [];
-    if (sections.length === 0) {
-        pdf.setFont("helvetica", "normal");
+    const drawAppendixField = (label, value) => {
+        const clean = cleanNarrativePdfText(value);
+        if (!clean) return;
+        ensureSpace(24);
+        pdf.setFont("times", "bold");
         pdf.setFontSize(11);
-        writeWrapped("Sin secciones.", 10);
+        pdf.text(`${label}`, marginX, y);
+        y += 14;
+        drawParagraphs(clean, { fontSize: 11, indent: 12, justify: false });
+    };
+
+    drawHeader();
+
+    drawCenteredText(documentName, 30, "bold", 4);
+    if (aliasText) {
+        drawCenteredText(aliasText, 14, "italic", 8);
+    }
+
+    if (summaryText) {
+        drawParagraphs(summaryText, { fontSize: 12, fontStyle: "normal", justify: true });
+    }
+
+    drawDivider();
+
+    if (sections.length === 0) {
+        drawParagraphs("Sin secciones narrativas.", { fontSize: 12, justify: false });
     } else {
         sections.forEach((section, index) => {
-            ensureSpace(18);
-            pdf.setFont("helvetica", "bold");
-            pdf.setFontSize(13);
-            pdf.text(`${index + 1}. ${sanitizePdfText(section.title) || "Sin titulo"}`, margin + 10, y);
-            y += 16;
-
-            pdf.setFont("helvetica", "bold");
-            pdf.setFontSize(10);
-            ensureSpace(13);
-            pdf.text("ID:", margin + 10, y);
-            pdf.setFont("helvetica", "normal");
-            pdf.text(sanitizePdfText(section.id) || "-", margin + 28, y);
-            y += 13;
-
-            pdf.setFont("helvetica", "normal");
-            pdf.setFontSize(11);
-            writeWrapped(section.text || "-", 10);
-            y += 7;
-
-            drawDivider();
+            drawSectionTitle(section.title || `Seccion ${index + 1}`);
+            drawParagraphs(section.text, { fontSize: 12, justify: true });
+            if (index < sections.length - 1) {
+                drawDivider();
+            }
         });
     }
 
-    const safeName = (payload.id || payload.slug || "nimroel_document")
-        .toString()
-        .replace(/[^a-zA-Z0-9_-]/g, "_");
-    pdf.save(`${safeName}.pdf`);
+    if (appendixFields.length > 0) {
+        drawDivider();
+        drawSectionTitle("Ficha tecnica");
+        appendixFields.forEach((field) => {
+            drawAppendixField(field.label, field.value);
+        });
+    }
+
+    const fileBase = slugifyFileName(documentName || payload.name || payload.id);
+    pdf.save(`${fileBase}.pdf`);
 }
 
 async function startGoogleLogin() {
