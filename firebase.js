@@ -52,6 +52,7 @@ const searchBtn = document.getElementById("searchBtn");
 const searchResults = document.getElementById("searchResults");
 const selectedIdInput = document.getElementById("selectedIdInput");
 const loadSelectedBtn = document.getElementById("loadSelectedBtn");
+const newDocTypeSelect = document.getElementById("newDocTypeSelect");
 const newDocBtn = document.getElementById("newDocBtn");
 
 const fieldId = document.getElementById("fieldId");
@@ -70,6 +71,7 @@ const relLocations = document.getElementById("relLocations");
 const relEvents = document.getElementById("relEvents");
 const summaryInput = document.getElementById("summaryInput");
 
+const sectionsBlock = document.getElementById("sectionsBlock");
 const sectionsContainer = document.getElementById("sectionsContainer");
 const addSectionBtn = document.getElementById("addSectionBtn");
 
@@ -90,6 +92,189 @@ const jsonPreview = document.getElementById("jsonPreview");
 let isAuthorized = false;
 let selectedEditId = "";
 
+const SUPPORTED_TYPES = ["character", "location", "event", "organization", "creature", "artifact"];
+
+const TYPE_ALIASES = {
+    character: "character",
+    characters: "character",
+    personaje: "character",
+    personajes: "character",
+    location: "location",
+    locations: "location",
+    localizacion: "location",
+    localizaciones: "location",
+    event: "event",
+    events: "event",
+    evento: "event",
+    eventos: "event",
+    organization: "organization",
+    organizations: "organization",
+    organizacion: "organization",
+    organizaciones: "organization",
+    creature: "creature",
+    creatures: "creature",
+    criatura: "creature",
+    criaturas: "creature",
+    artifact: "artifact",
+    artifacts: "artifact",
+    artefacto: "artifact",
+    artefactos: "artifact"
+};
+
+const ALL_FORM_FIELD_IDS = [
+    "fieldId",
+    "fieldType",
+    "fieldName",
+    "fieldSlug",
+    "metaTitle",
+    "metaImage",
+    "metaDescription",
+    "aliasInput",
+    "tagsInput",
+    "relCharacters",
+    "relLocations",
+    "relEvents",
+    "summaryInput",
+    "extraRace",
+    "extraBirth",
+    "extraDeath",
+    "extraAffiliation"
+];
+
+const TYPE_SCHEMAS = {
+    character: {
+        visibleFields: [
+            "fieldId", "fieldType", "fieldName", "fieldSlug",
+            "metaTitle", "metaImage", "metaDescription",
+            "aliasInput", "tagsInput",
+            "relCharacters", "relLocations", "relEvents",
+            "summaryInput",
+            "extraRace", "extraBirth", "extraDeath", "extraAffiliation"
+        ],
+        showSections: true
+    },
+    location: {
+        visibleFields: [
+            "fieldId", "fieldType", "fieldName", "fieldSlug",
+            "metaTitle", "metaImage", "metaDescription",
+            "tagsInput",
+            "relCharacters", "relLocations", "relEvents",
+            "summaryInput"
+        ],
+        showSections: true
+    },
+    event: {
+        visibleFields: [
+            "fieldId", "fieldType", "fieldName", "fieldSlug",
+            "metaTitle", "metaImage", "metaDescription",
+            "tagsInput",
+            "relCharacters", "relLocations", "relEvents",
+            "summaryInput"
+        ],
+        showSections: true
+    },
+    organization: {
+        visibleFields: [
+            "fieldId", "fieldType", "fieldName", "fieldSlug",
+            "metaTitle", "metaImage", "metaDescription",
+            "aliasInput", "tagsInput",
+            "relCharacters", "relLocations", "relEvents",
+            "summaryInput", "extraAffiliation"
+        ],
+        showSections: true
+    },
+    creature: {
+        visibleFields: [
+            "fieldId", "fieldType", "fieldName", "fieldSlug",
+            "metaTitle", "metaImage", "metaDescription",
+            "aliasInput", "tagsInput",
+            "relCharacters", "relLocations", "relEvents",
+            "summaryInput", "extraRace"
+        ],
+        showSections: true
+    },
+    artifact: {
+        visibleFields: [
+            "fieldId", "fieldType", "fieldName", "fieldSlug",
+            "metaTitle", "metaImage", "metaDescription",
+            "aliasInput", "tagsInput",
+            "relCharacters", "relLocations", "relEvents",
+            "summaryInput"
+        ],
+        showSections: true
+    }
+};
+
+const TYPE_TEMPLATES = {
+    character: {
+        id: "",
+        type: "character",
+        name: "",
+        slug: "",
+        meta: { title: "", description: "", image: "" },
+        alias: [],
+        tags: [],
+        relations: { characters: [], locations: [], events: [] },
+        content: { summary: "", sections: [] },
+        extra: { race: "", birth: "", death: "", affiliation: [] }
+    },
+    location: {
+        id: "",
+        type: "location",
+        name: "",
+        slug: "",
+        meta: { title: "", description: "", image: "" },
+        tags: [],
+        relations: { characters: [], locations: [], events: [] },
+        content: { summary: "", sections: [] }
+    },
+    event: {
+        id: "",
+        type: "event",
+        name: "",
+        slug: "",
+        meta: { title: "", description: "", image: "" },
+        tags: [],
+        relations: { characters: [], locations: [], events: [] },
+        content: { summary: "", sections: [] }
+    },
+    organization: {
+        id: "",
+        type: "organization",
+        name: "",
+        slug: "",
+        meta: { title: "", description: "", image: "" },
+        alias: [],
+        tags: [],
+        relations: { characters: [], locations: [], events: [] },
+        content: { summary: "", sections: [] },
+        extra: { affiliation: [] }
+    },
+    creature: {
+        id: "",
+        type: "creature",
+        name: "",
+        slug: "",
+        meta: { title: "", description: "", image: "" },
+        alias: [],
+        tags: [],
+        relations: { characters: [], locations: [], events: [] },
+        content: { summary: "", sections: [] },
+        extra: { race: "" }
+    },
+    artifact: {
+        id: "",
+        type: "artifact",
+        name: "",
+        slug: "",
+        meta: { title: "", description: "", image: "" },
+        alias: [],
+        tags: [],
+        relations: { characters: [], locations: [], events: [] },
+        content: { summary: "", sections: [] }
+    }
+};
+
 function setStatus(message, isError = false) {
     authStatus.textContent = message;
     authStatus.style.color = isError ? "#ff8b8b" : "";
@@ -105,7 +290,7 @@ function setAdminEnabled(enabled) {
     adminBox.classList.toggle("is-disabled", !enabled);
     adminBox.setAttribute("aria-disabled", String(!enabled));
 
-    const controls = adminBox.querySelectorAll("input, textarea, button");
+    const controls = adminBox.querySelectorAll("input, textarea, button, select");
     controls.forEach((control) => {
         control.disabled = !enabled;
     });
@@ -125,6 +310,48 @@ function setEditorMessage(lines) {
     lines.forEach(([label, value]) => {
         editorInfo.appendChild(createInfoLine(label, value));
     });
+}
+
+function deepClone(value) {
+    return JSON.parse(JSON.stringify(value));
+}
+
+function normalizeDocType(value) {
+    const clean = (value || "").toString().trim().toLowerCase();
+    const mapped = TYPE_ALIASES[clean] || clean;
+    return SUPPORTED_TYPES.includes(mapped) ? mapped : DEFAULT_TYPE;
+}
+
+function setFieldRowVisibility(fieldId, visible) {
+    const control = document.getElementById(fieldId);
+    const label = document.querySelector(`label[for="${fieldId}"]`);
+    const display = visible ? "" : "none";
+    if (label) label.style.display = display;
+    if (control) control.style.display = display;
+}
+
+function applyTypeSchema(type) {
+    const normalizedType = normalizeDocType(type);
+    const schema = TYPE_SCHEMAS[normalizedType] || TYPE_SCHEMAS[DEFAULT_TYPE];
+    const visibleFields = new Set(schema.visibleFields || []);
+
+    ALL_FORM_FIELD_IDS.forEach((fieldId) => {
+        setFieldRowVisibility(fieldId, visibleFields.has(fieldId));
+    });
+
+    if (sectionsBlock) {
+        sectionsBlock.style.display = schema.showSections ? "" : "none";
+    }
+
+    fieldType.value = normalizedType;
+    if (newDocTypeSelect) {
+        newDocTypeSelect.value = normalizedType;
+    }
+}
+
+function getTemplateForType(type) {
+    const normalizedType = normalizeDocType(type);
+    return deepClone(TYPE_TEMPLATES[normalizedType] || TYPE_TEMPLATES[DEFAULT_TYPE]);
 }
 
 function isCurrentUserAuthorized(user) {
@@ -477,7 +704,7 @@ function collectSections(strict = false) {
 
 function buildPayload(strict = false) {
     const id = validateId(fieldId.value, !strict);
-    const type = cleanText(fieldType.value);
+    const type = normalizeDocType(fieldType.value);
     const name = cleanText(fieldName.value);
     const slug = cleanText(fieldSlug.value);
 
@@ -495,9 +722,9 @@ function buildPayload(strict = false) {
         return null;
     }
 
-    return {
+    const rawPayload = {
         id: id || "",
-        type: type || "",
+        type,
         name: name || "",
         slug: slug || "",
         meta: {
@@ -523,11 +750,94 @@ function buildPayload(strict = false) {
             affiliation: parseList(extraAffiliation.value)
         }
     };
+
+    if (type === "character") {
+        return rawPayload;
+    }
+
+    if (type === "location") {
+        return {
+            id: rawPayload.id,
+            type,
+            name: rawPayload.name,
+            slug: rawPayload.slug,
+            meta: rawPayload.meta,
+            tags: rawPayload.tags,
+            relations: rawPayload.relations,
+            content: rawPayload.content
+        };
+    }
+
+    if (type === "event") {
+        return {
+            id: rawPayload.id,
+            type,
+            name: rawPayload.name,
+            slug: rawPayload.slug,
+            meta: rawPayload.meta,
+            tags: rawPayload.tags,
+            relations: rawPayload.relations,
+            content: rawPayload.content
+        };
+    }
+
+    if (type === "organization") {
+        return {
+            id: rawPayload.id,
+            type,
+            name: rawPayload.name,
+            slug: rawPayload.slug,
+            meta: rawPayload.meta,
+            alias: rawPayload.alias,
+            tags: rawPayload.tags,
+            relations: rawPayload.relations,
+            content: rawPayload.content,
+            extra: {
+                affiliation: rawPayload.extra.affiliation
+            }
+        };
+    }
+
+    if (type === "creature") {
+        return {
+            id: rawPayload.id,
+            type,
+            name: rawPayload.name,
+            slug: rawPayload.slug,
+            meta: rawPayload.meta,
+            alias: rawPayload.alias,
+            tags: rawPayload.tags,
+            relations: rawPayload.relations,
+            content: rawPayload.content,
+            extra: {
+                race: rawPayload.extra.race
+            }
+        };
+    }
+
+    if (type === "artifact") {
+        return {
+            id: rawPayload.id,
+            type,
+            name: rawPayload.name,
+            slug: rawPayload.slug,
+            meta: rawPayload.meta,
+            alias: rawPayload.alias,
+            tags: rawPayload.tags,
+            relations: rawPayload.relations,
+            content: rawPayload.content
+        };
+    }
+
+    return rawPayload;
 }
 
 function fillFormFromPayload(payload) {
+    const normalizedType = normalizeDocType(payload.type || DEFAULT_TYPE);
+    applyTypeSchema(normalizedType);
+
     fieldId.value = (payload.id || "").toString();
-    fieldType.value = (payload.type || DEFAULT_TYPE).toString();
+    fieldType.value = normalizedType;
     fieldName.value = (payload.name || "").toString();
     fieldSlug.value = (payload.slug || "").toString();
 
@@ -535,52 +845,31 @@ function fillFormFromPayload(payload) {
     metaDescription.value = (payload.meta?.description || "").toString();
     metaImage.value = (payload.meta?.image || "").toString();
 
-    aliasInput.value = formatList(payload.alias);
+    aliasInput.value = formatList(payload.alias || payload.aliases);
     tagsInput.value = formatList(payload.tags);
 
     relCharacters.value = formatList(payload.relations?.characters);
     relLocations.value = formatList(payload.relations?.locations);
     relEvents.value = formatList(payload.relations?.events);
 
-    summaryInput.value = (payload.content?.summary || "").toString();
-    renderSections(payload.content?.sections);
+    summaryInput.value = (payload.content?.summary || payload.summary || "").toString();
+    renderSections(payload.content?.sections || payload.sections);
 
-    extraRace.value = (payload.extra?.race || "").toString();
-    extraBirth.value = (payload.extra?.birth || "").toString();
-    extraDeath.value = (payload.extra?.death || "").toString();
-    extraAffiliation.value = formatList(payload.extra?.affiliation);
+    extraRace.value = (payload.extra?.race || payload.race || "").toString();
+    extraBirth.value = (payload.extra?.birth || payload.birth || "").toString();
+    extraDeath.value = (payload.extra?.death || payload.death || "").toString();
+    extraAffiliation.value = formatList(payload.extra?.affiliation || payload.affiliation);
 
     updateJsonPreview();
 }
 
-function clearForm() {
-    fieldId.value = "";
-    fieldType.value = DEFAULT_TYPE;
-    fieldName.value = "";
-    fieldSlug.value = "";
-
-    metaTitle.value = "";
-    metaDescription.value = "";
-    metaImage.value = "";
-
-    aliasInput.value = "";
-    tagsInput.value = "";
-
-    relCharacters.value = "";
-    relLocations.value = "";
-    relEvents.value = "";
-
-    summaryInput.value = "";
-    renderSections([]);
-
-    extraRace.value = "";
-    extraBirth.value = "";
-    extraDeath.value = "";
-    extraAffiliation.value = "";
-
+function clearForm(type = DEFAULT_TYPE) {
+    const normalizedType = normalizeDocType(type);
+    const template = getTemplateForType(normalizedType);
+    fillFormFromPayload(template);
     selectedEditId = "";
     selectedIdInput.value = "";
-    setEditorMessage([["Estado", "Documento nuevo en blanco"]]);
+    setEditorMessage([["Estado", `Documento nuevo en blanco (${normalizedType})`]]);
     updateJsonPreview();
 }
 
@@ -912,6 +1201,19 @@ loginBtn.addEventListener("click", async () => {
     await startGoogleLogin();
 });
 
+fieldType.addEventListener("change", () => {
+    const selectedType = normalizeDocType(fieldType.value);
+    applyTypeSchema(selectedType);
+    updateJsonPreview();
+});
+
+newDocTypeSelect.addEventListener("change", () => {
+    const selectedType = normalizeDocType(newDocTypeSelect.value);
+    fieldType.value = selectedType;
+    applyTypeSchema(selectedType);
+    updateJsonPreview();
+});
+
 searchBtn.addEventListener("click", async () => {
     if (!ensureAuthorized()) return;
 
@@ -955,7 +1257,8 @@ loadSelectedBtn.addEventListener("click", async () => {
 
 newDocBtn.addEventListener("click", () => {
     if (!ensureAuthorized()) return;
-    clearForm();
+    const selectedType = normalizeDocType(newDocTypeSelect.value || fieldType.value);
+    clearForm(selectedType);
 });
 
 addSectionBtn.addEventListener("click", () => {

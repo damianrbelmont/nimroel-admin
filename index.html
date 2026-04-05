@@ -28,6 +28,15 @@
 
                 <input type="text" id="selectedIdInput" placeholder="ID para cargar desde Firebase">
                 <button id="loadSelectedBtn" class="action-btn action-btn-secondary" type="button" disabled>CARGAR JSON EN FORMULARIO</button>
+                <label class="field-label" for="newDocTypeSelect">Tipo para nuevo documento</label>
+                <select id="newDocTypeSelect">
+                    <option value="character">Personaje</option>
+                    <option value="location">Localizacion</option>
+                    <option value="event">Evento</option>
+                    <option value="organization">Organizacion</option>
+                    <option value="creature">Criatura</option>
+                    <option value="artifact">Artefacto</option>
+                </select>
                 <button id="newDocBtn" class="action-btn action-btn-secondary" type="button" disabled>NUEVO DOCUMENTO (LIMPIAR)</button>
             </section>
 
@@ -39,7 +48,14 @@
                     <input type="text" id="fieldId" placeholder="kazan_rise">
 
                     <label class="field-label" for="fieldType">Type</label>
-                    <input type="text" id="fieldType" placeholder="character">
+                    <select id="fieldType">
+                        <option value="character">character</option>
+                        <option value="location">location</option>
+                        <option value="event">event</option>
+                        <option value="organization">organization</option>
+                        <option value="creature">creature</option>
+                        <option value="artifact">artifact</option>
+                    </select>
 
                     <label class="field-label" for="fieldName">Name</label>
                     <input type="text" id="fieldName" placeholder="Kazan Rise">
@@ -75,7 +91,7 @@
                     <textarea id="summaryInput" rows="6" placeholder="Resumen del personaje"></textarea>
                 </div>
 
-                <div class="sub-block">
+                <div class="sub-block" id="sectionsBlock">
                     <div class="sub-block-header">
                         <h3 class="sub-title">Content.sections</h3>
                         <button id="addSectionBtn" class="mini-btn" type="button" disabled>ANADIR SECCION</button>
