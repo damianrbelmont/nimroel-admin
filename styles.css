@@ -269,25 +269,66 @@ button {
     background: #091421;
 }
 
-.section-card-title {
-    font-size: 0.82rem;
-    color: var(--text-muted);
+.section-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
     margin-bottom: 8px;
 }
 
+.section-card-title {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    margin-bottom: 0;
+}
+
+.section-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.section-move {
+    border: 1px solid rgba(184, 155, 94, 0.4);
+    color: var(--accent);
+    background: #0c1824;
+    min-width: 30px;
+    padding: 5px 7px;
+    font-size: 0.9rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.section-move:hover {
+    border-color: var(--accent);
+    background: rgba(184, 155, 94, 0.18);
+}
+
+.section-move:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    background: #091421;
+}
+
 .section-remove {
-    margin-top: 4px;
     border: 1px solid #7a2424;
     color: #ffcac9;
     background: #2a0f0f;
-    padding: 7px 10px;
-    font-size: 0.74rem;
+    padding: 6px 9px;
+    font-size: 0.72rem;
     cursor: pointer;
 }
 
 .section-remove:hover {
     background: #7a2424;
     color: #fff;
+}
+
+.section-remove-inline {
+    margin-top: 0;
+    min-width: 30px;
+    line-height: 1;
 }
 
 .admin-info {

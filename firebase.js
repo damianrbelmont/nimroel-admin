@@ -276,9 +276,42 @@ function createSectionCard(section = {}) {
     const card = document.createElement("div");
     card.className = "section-card";
 
+    const cardHead = document.createElement("div");
+    cardHead.className = "section-card-head";
+
     const cardTitle = document.createElement("p");
     cardTitle.className = "section-card-title";
-    card.appendChild(cardTitle);
+    cardHead.appendChild(cardTitle);
+
+    const cardActions = document.createElement("div");
+    cardActions.className = "section-card-actions";
+
+    const moveUpButton = document.createElement("button");
+    moveUpButton.type = "button";
+    moveUpButton.className = "section-move section-move-up";
+    moveUpButton.innerHTML = "&#8593;";
+    moveUpButton.title = "Mover seccion hacia arriba";
+    moveUpButton.setAttribute("aria-label", "Mover seccion hacia arriba");
+
+    const moveDownButton = document.createElement("button");
+    moveDownButton.type = "button";
+    moveDownButton.className = "section-move section-move-down";
+    moveDownButton.innerHTML = "&#8595;";
+    moveDownButton.title = "Mover seccion hacia abajo";
+    moveDownButton.setAttribute("aria-label", "Mover seccion hacia abajo");
+
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.className = "section-remove section-remove-inline";
+    removeButton.textContent = "X";
+    removeButton.title = "Eliminar seccion";
+    removeButton.setAttribute("aria-label", "Eliminar seccion");
+
+    cardActions.appendChild(moveUpButton);
+    cardActions.appendChild(moveDownButton);
+    cardActions.appendChild(removeButton);
+    cardHead.appendChild(cardActions);
+    card.appendChild(cardHead);
 
     const idLabel = document.createElement("label");
     idLabel.className = "field-label";
@@ -316,16 +349,27 @@ function createSectionCard(section = {}) {
     textArea.value = (section.text || "").toString();
     card.appendChild(textArea);
 
-    const removeButton = document.createElement("button");
-    removeButton.type = "button";
-    removeButton.className = "section-remove";
-    removeButton.textContent = "ELIMINAR SECCION";
     removeButton.addEventListener("click", () => {
         card.remove();
         refreshSectionTitles();
         updateJsonPreview();
     });
-    card.appendChild(removeButton);
+
+    moveUpButton.addEventListener("click", () => {
+        const previous = card.previousElementSibling;
+        if (!previous) return;
+        sectionsContainer.insertBefore(card, previous);
+        refreshSectionTitles();
+        updateJsonPreview();
+    });
+
+    moveDownButton.addEventListener("click", () => {
+        const next = card.nextElementSibling;
+        if (!next) return;
+        sectionsContainer.insertBefore(next, card);
+        refreshSectionTitles();
+        updateJsonPreview();
+    });
 
     [idInput, titleInput, textArea].forEach((control) => {
         control.addEventListener("input", updateJsonPreview);
@@ -342,6 +386,11 @@ function refreshSectionTitles() {
         if (title) {
             title.textContent = `Seccion ${index + 1}`;
         }
+
+        const upButton = card.querySelector(".section-move-up");
+        const downButton = card.querySelector(".section-move-down");
+        if (upButton) upButton.disabled = index === 0;
+        if (downButton) downButton.disabled = index === cards.length - 1;
     });
 }
 
