@@ -81,6 +81,7 @@ const extraAffiliation = document.getElementById("extraAffiliation");
 const createBtn = document.getElementById("createBtn");
 const overwriteBtn = document.getElementById("overwriteBtn");
 const deleteBtn = document.getElementById("deleteBtn");
+const includeTechSheetToggle = document.getElementById("includeTechSheetToggle");
 const downloadPdfBtn = document.getElementById("downloadPdfBtn");
 
 const editorInfo = document.getElementById("editorInfo");
@@ -635,12 +636,13 @@ async function fetchIdsBySearch(searchValue) {
         .slice(0, 60);
 }
 
-function exportPayloadToPdf(payload) {
+function exportPayloadToPdf(payload, options = {}) {
     if (!window.jspdf || !window.jspdf.jsPDF) {
         alert("No se pudo cargar la libreria PDF.");
         return;
     }
 
+    const { includeTechnicalSheet = true } = options;
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ unit: "pt", format: "a4" });
 
@@ -668,23 +670,26 @@ function exportPayloadToPdf(payload) {
         }))
         .filter((section) => section.text);
 
-    const relationLines = [];
-    const relationMap = payload.relations && typeof payload.relations === "object" ? payload.relations : {};
-    Object.entries(relationMap).forEach(([key, value]) => {
-        const values = Array.isArray(value) ? value : [];
-        const cleanValues = values.map((entry) => cleanNarrativePdfText(entry)).filter(Boolean);
-        if (cleanValues.length > 0) {
-            relationLines.push(`${key}: ${cleanValues.join(", ")}`);
-        }
-    });
+    const appendixFields = [];
+    if (includeTechnicalSheet) {
+        const relationLines = [];
+        const relationMap = payload.relations && typeof payload.relations === "object" ? payload.relations : {};
+        Object.entries(relationMap).forEach(([key, value]) => {
+            const values = Array.isArray(value) ? value : [];
+            const cleanValues = values.map((entry) => cleanNarrativePdfText(entry)).filter(Boolean);
+            if (cleanValues.length > 0) {
+                relationLines.push(`${key}: ${cleanValues.join(", ")}`);
+            }
+        });
 
-    const appendixFields = [
-        { label: "id", value: cleanNarrativePdfText(payload.id) },
-        { label: "type", value: cleanNarrativePdfText(payload.type) },
-        { label: "slug", value: cleanNarrativePdfText(payload.slug) },
-        { label: "meta.image", value: cleanNarrativePdfText(payload.meta?.image) },
-        { label: "relations", value: relationLines.join("\n") }
-    ].filter((field) => field.value);
+        appendixFields.push(
+            { label: "id", value: cleanNarrativePdfText(payload.id) },
+            { label: "type", value: cleanNarrativePdfText(payload.type) },
+            { label: "slug", value: cleanNarrativePdfText(payload.slug) },
+            { label: "meta.image", value: cleanNarrativePdfText(payload.meta?.image) },
+            { label: "relations", value: relationLines.join("\n") }
+        );
+    }
 
     const marginX = 68;
     const marginBottom = 60;
@@ -858,10 +863,11 @@ function exportPayloadToPdf(payload) {
         });
     }
 
-    if (appendixFields.length > 0) {
+    const validAppendixFields = appendixFields.filter((field) => field.value);
+    if (validAppendixFields.length > 0) {
         drawDivider();
         drawSectionTitle("Ficha tecnica");
-        appendixFields.forEach((field) => {
+        validAppendixFields.forEach((field) => {
             drawAppendixField(field.label, field.value);
         });
     }
@@ -1061,7 +1067,9 @@ downloadPdfBtn.addEventListener("click", () => {
     if (!ensureAuthorized()) return;
     const payload = buildPayload(false);
     if (!payload) return;
-    exportPayloadToPdf(payload);
+    exportPayloadToPdf(payload, {
+        includeTechnicalSheet: Boolean(includeTechSheetToggle?.checked)
+    });
 });
 
 adminBox.addEventListener("input", () => {
