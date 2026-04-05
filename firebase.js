@@ -144,12 +144,20 @@ function normalizeLineBreaks(value) {
     return (value || "").toString().replace(/\r\n?/g, "\n");
 }
 
+function decodeEscapedLineBreaks(value) {
+    return (value || "").toString().replace(/\\n/g, "\n");
+}
+
 function cleanText(value) {
     return normalizeLineBreaks(value).trim();
 }
 
+function cleanMultilineText(value) {
+    return decodeEscapedLineBreaks(normalizeLineBreaks(value)).trim();
+}
+
 function parseList(value) {
-    const source = normalizeLineBreaks(value);
+    const source = decodeEscapedLineBreaks(normalizeLineBreaks(value));
     const entries = source
         .split(/[\n,]/)
         .map((entry) => entry.trim())
@@ -355,7 +363,7 @@ function collectSections(strict = false) {
         const card = cards[i];
         const id = cleanText(card.querySelector(".section-id")?.value);
         const title = cleanText(card.querySelector(".section-title-input")?.value);
-        const text = cleanText(card.querySelector(".section-text")?.value);
+        const text = cleanMultilineText(card.querySelector(".section-text")?.value);
 
         if (!id && !title && !text) {
             continue;
@@ -409,7 +417,7 @@ function buildPayload(strict = false) {
         slug: slug || "",
         meta: {
             title: cleanText(metaTitle.value),
-            description: cleanText(metaDescription.value),
+            description: cleanMultilineText(metaDescription.value),
             image: cleanText(metaImage.value)
         },
         alias: parseList(aliasInput.value),
@@ -420,7 +428,7 @@ function buildPayload(strict = false) {
             events: parseList(relEvents.value)
         },
         content: {
-            summary: cleanText(summaryInput.value),
+            summary: cleanMultilineText(summaryInput.value),
             sections
         },
         extra: {
