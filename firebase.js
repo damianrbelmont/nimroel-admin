@@ -83,7 +83,6 @@ const extraAffiliation = document.getElementById("extraAffiliation");
 const createBtn = document.getElementById("createBtn");
 const overwriteBtn = document.getElementById("overwriteBtn");
 const deleteBtn = document.getElementById("deleteBtn");
-const includeTechSheetToggle = document.getElementById("includeTechSheetToggle");
 const downloadPdfBtn = document.getElementById("downloadPdfBtn");
 
 const editorInfo = document.getElementById("editorInfo");
@@ -500,10 +499,36 @@ function sanitizePdfText(value) {
         .trim();
 }
 
+function toNaturalName(value) {
+    const clean = (value || "")
+        .toString()
+        .replace(/\[\[|\]\]/g, "")
+        .replace(/[|]/g, " ")
+        .replace(/[_-]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    if (!clean) return "";
+
+    return clean
+        .split(" ")
+        .filter(Boolean)
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+        .join(" ");
+}
+
+function normalizeSnakeCaseTokens(value) {
+    return (value || "").toString().replace(/\b[A-Za-zÀ-ÿ0-9]+(?:[_-][A-Za-zÀ-ÿ0-9]+)+\b/g, (token) => toNaturalName(token));
+}
+
 function cleanNarrativePdfText(value) {
     const normalized = decodeEscapedLineBreaks(normalizeLineBreaks(value))
-        .replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, "$2")
-        .replace(/\[\[([^\]]+)\]\]/g, "$1")
+        .replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, (_, ref, label) => {
+            const cleanedLabel = (label || "").toString().trim();
+            if (cleanedLabel) return normalizeSnakeCaseTokens(cleanedLabel);
+            return toNaturalName(ref);
+        })
+        .replace(/\[\[([^\]]+)\]\]/g, (_, ref) => toNaturalName(ref))
         .replace(/<br\s*\/?>/gi, "\n")
         .replace(/<\/p>/gi, "\n\n")
         .replace(/<[^>]+>/g, "")
@@ -512,10 +537,12 @@ function cleanNarrativePdfText(value) {
         .replace(/&lt;/gi, "<")
         .replace(/&gt;/gi, ">")
         .replace(/&quot;/gi, "\"")
-        .replace(/&#39;/gi, "'");
+        .replace(/&#39;/gi, "'")
+        .replace(/[^\S\n]+/g, " ")
+        .replace(/[\uFFFD]/g, "");
 
     return sanitizePdfText(
-        normalized
+        normalizeSnakeCaseTokens(normalized)
             .split("\n")
             .map((line) => line.replace(/\s+$/g, ""))
             .join("\n")
@@ -523,16 +550,16 @@ function cleanNarrativePdfText(value) {
     );
 }
 
-function slugifyFileName(value) {
-    const slug = (value || "")
-        .toString()
-        .toLowerCase()
+function buildPdfFileName(value) {
+    const normalized = toNaturalName(cleanNarrativePdfText(value) || "Documento Nimroel")
+        .replace(/\s+/g, "_")
         .normalize("NFD")
         .replace(/[\u0300-\u036f]/g, "")
-        .replace(/[^a-z0-9]+/g, "_")
+        .replace(/[^A-Za-z0-9_]/g, "")
+        .replace(/_+/g, "_")
         .replace(/^_+|_+$/g, "");
 
-    return slug || "nimroel_document";
+    return normalized || "Documento_Nimroel";
 }
 
 function createSectionCard(section = {}) {
@@ -925,13 +952,12 @@ async function fetchIdsBySearch(searchValue) {
         .slice(0, 60);
 }
 
-function exportPayloadToPdf(payload, options = {}) {
+function exportPayloadToPdf(payload) {
     if (!window.jspdf || !window.jspdf.jsPDF) {
         alert("No se pudo cargar la libreria PDF.");
         return;
     }
 
-    const { includeTechnicalSheet = true } = options;
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ unit: "pt", format: "a4" });
 
@@ -959,56 +985,20 @@ function exportPayloadToPdf(payload, options = {}) {
         }))
         .filter((section) => section.text);
 
-    const appendixFields = [];
-    if (includeTechnicalSheet) {
-        const relationLines = [];
-        const relationMap = payload.relations && typeof payload.relations === "object" ? payload.relations : {};
-        Object.entries(relationMap).forEach(([key, value]) => {
-            const values = Array.isArray(value) ? value : [];
-            const cleanValues = values.map((entry) => cleanNarrativePdfText(entry)).filter(Boolean);
-            if (cleanValues.length > 0) {
-                relationLines.push(`${key}: ${cleanValues.join(", ")}`);
-            }
-        });
-
-        appendixFields.push(
-            { label: "id", value: cleanNarrativePdfText(payload.id) },
-            { label: "type", value: cleanNarrativePdfText(payload.type) },
-            { label: "slug", value: cleanNarrativePdfText(payload.slug) },
-            { label: "meta.image", value: cleanNarrativePdfText(payload.meta?.image) },
-            { label: "relations", value: relationLines.join("\n") }
-        );
-    }
-
     const marginX = 68;
-    const marginBottom = 60;
-    const headerTop = 34;
-    const contentTop = 88;
-    const lineHeight = 17;
-    const paragraphGap = 8;
+    const marginTop = 68;
+    const marginBottom = 64;
+    const lineHeight = 18;
+    const paragraphGap = 9;
     const pageWidth = pdf.internal.pageSize.getWidth();
     const pageHeight = pdf.internal.pageSize.getHeight();
     const maxWidth = pageWidth - marginX * 2;
-    let y = contentTop;
+    let y = marginTop;
 
     const ensureSpace = (height = lineHeight) => {
         if (y + height <= pageHeight - marginBottom) return;
         pdf.addPage();
-        drawHeader();
-        y = contentTop;
-    };
-
-    const runningHeader = `${documentName || "Documento"} \u2014 Cr\u00f3nicas de Nimroel`;
-
-    const drawHeader = () => {
-        pdf.setFont("times", "italic");
-        pdf.setFontSize(10);
-        pdf.setTextColor(90, 90, 90);
-        pdf.text(runningHeader, pageWidth / 2, headerTop, { align: "center" });
-        pdf.setDrawColor(196, 196, 196);
-        pdf.setLineWidth(0.6);
-        pdf.line(marginX, headerTop + 10, pageWidth - marginX, headerTop + 10);
-        pdf.setTextColor(20, 20, 20);
+        y = marginTop;
     };
 
     const drawCenteredText = (text, fontSize, style, bottomGap = 0) => {
@@ -1094,74 +1084,79 @@ function exportPayloadToPdf(payload, options = {}) {
     };
 
     const drawDivider = () => {
-        ensureSpace(24);
-        y += 4;
+        ensureSpace(30);
+        y += 8;
         pdf.setDrawColor(184, 155, 94);
-        pdf.setLineWidth(0.8);
+        pdf.setLineWidth(1.1);
         pdf.line(marginX, y, pageWidth - marginX, y);
-        y += 18;
+        y += 22;
     };
 
     const drawSectionTitle = (text) => {
         const clean = cleanNarrativePdfText(text);
         if (!clean) return;
         pdf.setFont("times", "bold");
-        pdf.setFontSize(18);
+        pdf.setFontSize(22);
         const lines = pdf.splitTextToSize(clean, maxWidth);
         lines.forEach((line) => {
-            ensureSpace(24);
+            ensureSpace(28);
             pdf.text(line, marginX, y);
-            y += 24;
+            y += 28;
         });
-        y += 4;
+        y += 6;
     };
 
-    const drawAppendixField = (label, value) => {
-        const clean = cleanNarrativePdfText(value);
-        if (!clean) return;
-        ensureSpace(24);
-        pdf.setFont("times", "bold");
-        pdf.setFontSize(11);
-        pdf.text(`${label}`, marginX, y);
-        y += 14;
-        drawParagraphs(clean, { fontSize: 11, indent: 12, justify: false });
+    const estimateLineCount = (text, fontSize = 12) => {
+        const clean = cleanNarrativePdfText(text);
+        if (!clean) return 0;
+        pdf.setFont("times", "normal");
+        pdf.setFontSize(fontSize);
+        const paragraphs = clean
+            .split(/\n{2,}/)
+            .map((paragraph) => paragraph.trim())
+            .filter(Boolean);
+        let total = 0;
+        paragraphs.forEach((paragraph) => {
+            const lines = pdf.splitTextToSize(paragraph, maxWidth);
+            total += lines.length + 1;
+        });
+        return total;
     };
 
-    drawHeader();
-
-    drawCenteredText(documentName, 30, "bold", 4);
+    drawCenteredText(documentName, 36, "bold", 8);
     if (aliasText) {
-        drawCenteredText(aliasText, 14, "italic", 8);
+        drawCenteredText(aliasText, 15, "italic", 10);
     }
 
     if (summaryText) {
         drawParagraphs(summaryText, { fontSize: 12, fontStyle: "normal", justify: true });
+        y += 6;
     }
 
-    drawDivider();
-
     if (sections.length === 0) {
+        drawDivider();
         drawParagraphs("Sin secciones narrativas.", { fontSize: 12, justify: false });
     } else {
         sections.forEach((section, index) => {
-            drawSectionTitle(section.title || `Seccion ${index + 1}`);
-            drawParagraphs(section.text, { fontSize: 12, justify: true });
-            if (index < sections.length - 1) {
+            const estimatedLines = estimateLineCount(section.text, 12);
+            const isLongSection = estimatedLines > 24;
+            if (index > 0) {
+                drawDivider();
+                if (isLongSection) {
+                    pdf.addPage();
+                    y = marginTop;
+                }
+            } else {
                 drawDivider();
             }
+
+            drawSectionTitle(section.title || `Seccion ${index + 1}`);
+            drawParagraphs(section.text, { fontSize: 12, justify: true });
+            y += 6;
         });
     }
 
-    const validAppendixFields = appendixFields.filter((field) => field.value);
-    if (validAppendixFields.length > 0) {
-        drawDivider();
-        drawSectionTitle("Ficha tecnica");
-        validAppendixFields.forEach((field) => {
-            drawAppendixField(field.label, field.value);
-        });
-    }
-
-    const fileBase = slugifyFileName(documentName || payload.name || payload.id);
+    const fileBase = buildPdfFileName(documentName || payload.name || payload.id);
     pdf.save(`${fileBase}.pdf`);
 }
 
@@ -1370,9 +1365,7 @@ downloadPdfBtn.addEventListener("click", () => {
     if (!ensureAuthorized()) return;
     const payload = buildPayload(false);
     if (!payload) return;
-    exportPayloadToPdf(payload, {
-        includeTechnicalSheet: Boolean(includeTechSheetToggle?.checked)
-    });
+    exportPayloadToPdf(payload);
 });
 
 adminBox.addEventListener("input", () => {
